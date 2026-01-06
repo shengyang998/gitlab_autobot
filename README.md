@@ -6,7 +6,6 @@ CLI and MCP server to create GitLab merge requests and generate MR messages.
 
 - Python 3.10+
 - A GitLab personal access token with API access
-- (For MCP usage) an OpenAI API key
 
 ## Setup
 
@@ -21,12 +20,6 @@ CLI and MCP server to create GitLab merge requests and generate MR messages.
 
    ```bash
    pip install -e .
-   ```
-
-3. (Optional) Export your OpenAI API key for the MCP server:
-
-   ```bash
-   export OPENAI_API_KEY="your-key"
    ```
 
 ## CLI usage (merge requests)
@@ -51,7 +44,7 @@ Credentials are stored at:
 ~/.config/gitlab_autobot/credentials.json
 ```
 
-## MCP server usage (MR message generation)
+## MCP server usage (MR tooling)
 
 Start the MCP server:
 
@@ -59,11 +52,8 @@ Start the MCP server:
 gitlab-autobot-mcp
 ```
 
-The server exposes a `generate_mr_message` tool that accepts:
+The server exposes tools for:
 
-- `title` (string)
-- `summary` (string)
-- `changes` (list of strings, optional)
-- `tests` (list of strings, optional)
-
-Make sure `OPENAI_API_KEY` is set before running the server.
+- Creating merge requests via the GitLab API (`create_merge_request`).
+- Collecting git log and diff information for MR changes (`collect_mr_changes`).
+- Accepting an MR message supplied by the LLM (`submit_mr_message`).
