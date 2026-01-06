@@ -4,6 +4,7 @@ import subprocess
 from typing import Annotated, Any
 
 from mcp.server.fastmcp import FastMCP
+from pydantic import Field
 
 from gitlab_autobot.config import load_credentials
 from gitlab_autobot.gitlab import GitLabClient
@@ -13,8 +14,12 @@ mcp = FastMCP("gitlab-autobot")
 
 def _resolve_client(base_url: str | None, token: str | None) -> GitLabClient:
     creds = load_credentials()
-    resolved_base_url = base_url or creds.get("base_url") or "https://gitlab.com"
+    resolved_base_url = base_url or creds.get("base_url")
     resolved_token = token or creds.get("token")
+    if not resolved_base_url:
+        raise RuntimeError(
+            "GitLab base URL not found. Provide base_url or run the CLI to save credentials."
+        )
     if not resolved_token:
         raise RuntimeError(
             "GitLab token not found. Provide token or run the CLI to save credentials."
@@ -34,27 +39,43 @@ def _run_git(args: list[str]) -> str:
 
 @mcp.tool()
 def create_merge_request(
-    project_path: Annotated[str, "GitLab project path (e.g. group/project)."],
-    source_branch: Annotated[str, "Source branch name for the merge request."],
-    target_branch: Annotated[str, "Target branch name for the merge request."],
-    title: Annotated[str, "Title for the merge request."],
+    project_path: Annotated[
+        str, Field(description="GitLab project path (e.g. group/project).")
+    ],
+    source_branch: Annotated[
+        str, Field(description="Source branch name for the merge request.")
+    ],
+    target_branch: Annotated[
+        str, Field(description="Target branch name for the merge request.")
+    ],
+    title: Annotated[str, Field(description="Title for the merge request.")],
     description: Annotated[
-        str | None, "Optional merge request description in Markdown."
+        str | None,
+        Field(description="Optional merge request description in Markdown."),
     ] = None,
     assignee: Annotated[
         str | None,
-        "Optional GitLab username to assign the merge request to.",
+        Field(description="Optional GitLab username to assign the merge request to."),
     ] = None,
     reviewers: Annotated[
         list[str] | None,
-        "Optional list of GitLab usernames to add as reviewers.",
+        Field(description="Optional list of GitLab usernames to add as reviewers."),
     ] = None,
     base_url: Annotated[
-        str | None, "Optional GitLab base URL override (defaults to saved credentials)."
+        str | None,
+        Field(
+            description=(
+                "Optional GitLab base URL override (defaults to saved credentials)."
+            )
+        ),
     ] = None,
     token: Annotated[
         str | None,
-        "Optional GitLab access token override (defaults to saved credentials).",
+        Field(
+            description=(
+                "Optional GitLab access token override (defaults to saved credentials)."
+            )
+        ),
     ] = None,
 ) -> dict[str, Any]:
     """Create a merge request via the GitLab API."""
@@ -79,13 +100,14 @@ def create_merge_request(
 @mcp.tool()
 def collect_mr_changes(
     base_ref: Annotated[
-        str, "Git ref for the merge request base (defaults to origin/main)."
+        str,
+        Field(description="Git ref for the merge request base (defaults to origin/main)."),
     ] = "origin/main",
     head_ref: Annotated[
-        str, "Git ref for the merge request head (defaults to HEAD)."
+        str, Field(description="Git ref for the merge request head (defaults to HEAD).")
     ] = "HEAD",
     max_commits: Annotated[
-        int, "Maximum number of commits to return from git log."
+        int, Field(description="Maximum number of commits to return from git log.")
     ] = 50,
 ) -> dict[str, Any]:
     """Collect git log and diff information for an MR range."""
@@ -101,7 +123,7 @@ def collect_mr_changes(
 
 @mcp.tool()
 def submit_mr_message(
-    message: Annotated[str, "Prepared merge request message body."]
+    message: Annotated[str, Field(description="Prepared merge request message body.")]
 ) -> dict[str, Any]:
     """Accept a merge request message supplied by an LLM."""
     return {"message": message.strip()}
