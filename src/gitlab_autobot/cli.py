@@ -25,8 +25,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "-b",
         "--base-url",
-        default=creds.get("base_url", "https://gitlab.com"),
-        help="GitLab base URL (default: %(default)s)",
+        default=creds.get("base_url"),
+        required=creds.get("base_url") is None,
+        help="GitLab base URL.",
     )
     parser.add_argument(
         "-p",
@@ -68,6 +69,8 @@ def main() -> None:
         raise SystemExit("Missing token. Set GITLAB_TOKEN or save credentials.")
 
     base_url = args.base_url
+    if not base_url:
+        raise SystemExit("Missing base URL. Provide --base-url or save credentials.")
 
     client = GitLabClient(base_url=base_url, token=token)
 
