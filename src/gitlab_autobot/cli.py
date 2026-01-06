@@ -1,20 +1,10 @@
 from __future__ import annotations
 
-import getpass
+import argparse
+import os
 
 from gitlab_autobot.config import load_credentials, save_credentials
 from gitlab_autobot.gitlab import AuthError, GitLabClient, GitLabError
-
-
-def prompt(text: str, default: str | None = None) -> str:
-    if default:
-        value = input(f"{text} [{default}]: ").strip()
-        return value or default
-    return input(f"{text}: ").strip()
-
-
-def prompt_token() -> str:
-    return getpass.getpass("GitLab personal access token: ").strip()
 
 
 def ensure_authenticated(client: GitLabClient) -> dict[str, str]:
@@ -27,30 +17,70 @@ def ensure_authenticated(client: GitLabClient) -> dict[str, str]:
         "name": user.get("name", ""),
     }
 
+def parse_args() -> argparse.Namespace:
+    creds = load_credentials()
+    parser = argparse.ArgumentParser(
+        description="Create a GitLab merge request without interactive prompts."
+    )
+    parser.add_argument(
+        "-b",
+        "--base-url",
+        default=creds.get("base_url", "https://gitlab.com"),
+        help="GitLab base URL (default: %(default)s)",
+    )
+    parser.add_argument(
+        "-p",
+        "--project-path",
+        required=True,
+        help="GitLab project path.",
+    )
+    parser.add_argument(
+        "-s",
+        "--source-branch",
+        required=True,
+        help="Source branch name.",
+    )
+    parser.add_argument(
+        "-t",
+        "--target-branch",
+        required=True,
+        help="Target branch name.",
+    )
+    parser.add_argument("-a", "--assignee", help="Assignee username.")
+    parser.add_argument(
+        "-r",
+        "--reviewers",
+        help="Comma-separated reviewer usernames (e.g. alice,bob).",
+    )
+    return parser.parse_args()
+
+
+def parse_reviewers(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    return [name.strip() for name in raw.split(",") if name.strip()]
+
 
 def main() -> None:
-    creds = load_credentials()
-    base_url = prompt("GitLab base URL", creds.get("base_url", "https://gitlab.com"))
-    token = creds.get("token")
+    args = parse_args()
+    token = creds.get("token") or os.getenv("GITLAB_TOKEN")
     if not token:
-        token = prompt_token()
+        raise SystemExit("Missing token. Set GITLAB_TOKEN or save credentials.")
+
+    base_url = args.base_url
 
     client = GitLabClient(base_url=base_url, token=token)
 
     try:
         user_info = ensure_authenticated(client)
     except AuthError:
-        print("Authentication failed. Please provide a new token.")
-        token = prompt_token()
-        client = GitLabClient(base_url=base_url, token=token)
-        user_info = ensure_authenticated(client)
+        raise SystemExit("Authentication failed. Provide a valid token.")
 
-    project_path = prompt("GitLab project path (group/project)")
-    source_branch = prompt("Source branch")
-    target_branch = prompt("Target branch")
-    assignee = prompt("Assignee username (optional)", "").strip() or None
-    reviewers_raw = prompt("Reviewer usernames (comma-separated, optional)", "").strip()
-    reviewers = [name.strip() for name in reviewers_raw.split(",") if name.strip()]
+    project_path = args.project_path
+    source_branch = args.source_branch
+    target_branch = args.target_branch
+    assignee = args.assignee
+    reviewers = parse_reviewers(args.reviewers)
 
     title = f"Merge {source_branch} into {target_branch}"
 
@@ -64,17 +94,7 @@ def main() -> None:
             reviewers=reviewers,
         )
     except AuthError:
-        print("Authentication failed. Please provide a new token.")
-        token = prompt_token()
-        client = GitLabClient(base_url=base_url, token=token)
-        mr = client.create_merge_request(
-            project_path=project_path,
-            source_branch=source_branch,
-            target_branch=target_branch,
-            title=title,
-            assignee=assignee,
-            reviewers=reviewers,
-        )
+        raise SystemExit("Authentication failed. Provide a valid token.")
     except GitLabError as exc:
         raise SystemExit(str(exc))
 
