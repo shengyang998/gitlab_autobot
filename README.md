@@ -22,6 +22,66 @@ CLI and MCP server to create GitLab merge requests and generate MR messages.
    pip install -e .
    ```
 
+### Using uv without activating a venv
+
+If you want the CLI/MCP commands to be available outside a virtual environment
+(e.g. for Cursor or Claude), use `uv` to run or install the tools:
+
+```bash
+uv tool run --from . gitlab-autobot-mcp
+```
+
+Or install the tools globally for your user:
+
+```bash
+uv tool install .
+```
+
+### Configure Cursor, Claude Code, or Codex
+
+If your editor/agent needs an MCP server command, point it at the installed
+binary (recommended) or use `uv tool run --from .` for a repo checkout.
+
+Example `mcp.json` entry:
+
+```json
+{
+  "mcpServers": {
+    "gitlab-autobot": {
+      "command": "gitlab-autobot-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+If you prefer to run from source without installing:
+
+```json
+{
+  "mcpServers": {
+    "gitlab-autobot": {
+      "command": "uv",
+      "args": ["tool", "run", "--from", ".", "gitlab-autobot-mcp"]
+    }
+  }
+}
+```
+
+You can also point your editor to a helper script that starts the MCP server
+from this repo:
+
+```json
+{
+  "mcpServers": {
+    "gitlab-autobot": {
+      "command": "./scripts/start-mcp.sh",
+      "args": []
+    }
+  }
+}
+```
+
 ## CLI usage (merge requests)
 
 Run the CLI and follow the prompts:
