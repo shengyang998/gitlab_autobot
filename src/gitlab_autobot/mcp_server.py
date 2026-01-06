@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import subprocess
-from typing import Any
+from typing import Annotated, Any
 
 from mcp.server.fastmcp import FastMCP
 
@@ -34,15 +34,28 @@ def _run_git(args: list[str]) -> str:
 
 @mcp.tool()
 def create_merge_request(
-    project_path: str,
-    source_branch: str,
-    target_branch: str,
-    title: str,
-    description: str | None = None,
-    assignee: str | None = None,
-    reviewers: list[str] | None = None,
-    base_url: str | None = None,
-    token: str | None = None,
+    project_path: Annotated[str, "GitLab project path (e.g. group/project)."],
+    source_branch: Annotated[str, "Source branch name for the merge request."],
+    target_branch: Annotated[str, "Target branch name for the merge request."],
+    title: Annotated[str, "Title for the merge request."],
+    description: Annotated[
+        str | None, "Optional merge request description in Markdown."
+    ] = None,
+    assignee: Annotated[
+        str | None,
+        "Optional GitLab username to assign the merge request to.",
+    ] = None,
+    reviewers: Annotated[
+        list[str] | None,
+        "Optional list of GitLab usernames to add as reviewers.",
+    ] = None,
+    base_url: Annotated[
+        str | None, "Optional GitLab base URL override (defaults to saved credentials)."
+    ] = None,
+    token: Annotated[
+        str | None,
+        "Optional GitLab access token override (defaults to saved credentials).",
+    ] = None,
 ) -> dict[str, Any]:
     """Create a merge request via the GitLab API."""
     client = _resolve_client(base_url, token)
@@ -65,9 +78,15 @@ def create_merge_request(
 
 @mcp.tool()
 def collect_mr_changes(
-    base_ref: str = "origin/main",
-    head_ref: str = "HEAD",
-    max_commits: int = 50,
+    base_ref: Annotated[
+        str, "Git ref for the merge request base (defaults to origin/main)."
+    ] = "origin/main",
+    head_ref: Annotated[
+        str, "Git ref for the merge request head (defaults to HEAD)."
+    ] = "HEAD",
+    max_commits: Annotated[
+        int, "Maximum number of commits to return from git log."
+    ] = 50,
 ) -> dict[str, Any]:
     """Collect git log and diff information for an MR range."""
     log_output = _run_git(
@@ -81,7 +100,9 @@ def collect_mr_changes(
 
 
 @mcp.tool()
-def submit_mr_message(message: str) -> dict[str, Any]:
+def submit_mr_message(
+    message: Annotated[str, "Prepared merge request message body."]
+) -> dict[str, Any]:
     """Accept a merge request message supplied by an LLM."""
     return {"message": message.strip()}
 
