@@ -61,6 +61,7 @@ class GitLabClient:
         source_branch: str,
         target_branch: str,
         title: str,
+        description: str | None = None,
         assignee: str | None = None,
         reviewers: Iterable[str] | None = None,
     ) -> dict[str, Any]:
@@ -70,6 +71,8 @@ class GitLabClient:
             "target_branch": target_branch,
             "title": title,
         }
+        if description:
+            payload["description"] = description
         if assignee:
             payload["assignee_id"] = self.get_user_id(assignee)
         if reviewers:
