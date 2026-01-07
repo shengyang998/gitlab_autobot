@@ -36,7 +36,11 @@ def _find_repo_root(start_path: Path) -> Path | None:
     return None
 
 
-def _resolve_repo_root() -> Path | None:
+def _resolve_repo_root(repo_path: str | None = None) -> Path | None:
+    if repo_path:
+        candidate = Path(repo_path).expanduser().resolve()
+        if (candidate / ".git").exists():
+            return candidate
     env_path = os.environ.get("GITLAB_AUTOBOT_REPO_PATH")
     if env_path:
         candidate = Path(env_path).expanduser().resolve()
@@ -51,8 +55,8 @@ def _resolve_repo_root() -> Path | None:
     return None
 
 
-def _run_git(args: list[str]) -> str:
-    repo_root = _resolve_repo_root()
+def _run_git(args: list[str], repo_path: str | None = None) -> str:
+    repo_root = _resolve_repo_root(repo_path)
     git_args = ["git"]
     if repo_root:
         git_args.extend(["-C", str(repo_root)])
@@ -137,12 +141,22 @@ def collect_mr_changes(
     max_commits: Annotated[
         int, Field(description="Maximum number of commits to return from git log.")
     ] = 50,
+    repo_path: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Optional path to the repository to use for git commands (overrides"
+                " env/cwd/module discovery)."
+            )
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """Collect git log and diff information for an MR range."""
     log_output = _run_git(
-        ["log", f"--max-count={max_commits}", "--oneline", f"{base_ref}..{head_ref}"]
+        ["log", f"--max-count={max_commits}", "--oneline", f"{base_ref}..{head_ref}"],
+        repo_path=repo_path,
     )
-    diff_output = _run_git(["diff", f"{base_ref}...{head_ref}"])
+    diff_output = _run_git(["diff", f"{base_ref}...{head_ref}"], repo_path=repo_path)
     return {
         "log": log_output,
         "diff": diff_output,
