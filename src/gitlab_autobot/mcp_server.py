@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import subprocess
+from pathlib import Path
 from typing import Annotated, Any
 
 from mcp.server.fastmcp import FastMCP
@@ -27,9 +29,35 @@ def _resolve_client(base_url: str | None, token: str | None) -> GitLabClient:
     return GitLabClient(base_url=resolved_base_url, token=resolved_token)
 
 
+def _find_repo_root(start_path: Path) -> Path | None:
+    for parent in [start_path, *start_path.parents]:
+        if (parent / ".git").exists():
+            return parent
+    return None
+
+
+def _resolve_repo_root() -> Path | None:
+    env_path = os.environ.get("GITLAB_AUTOBOT_REPO_PATH")
+    if env_path:
+        candidate = Path(env_path).expanduser().resolve()
+        if (candidate / ".git").exists():
+            return candidate
+    cwd_root = _find_repo_root(Path.cwd())
+    if cwd_root:
+        return cwd_root
+    module_root = _find_repo_root(Path(__file__).resolve())
+    if module_root:
+        return module_root
+    return None
+
+
 def _run_git(args: list[str]) -> str:
+    repo_root = _resolve_repo_root()
+    git_args = ["git"]
+    if repo_root:
+        git_args.extend(["-C", str(repo_root)])
     result = subprocess.run(
-        ["git", *args],
+        [*git_args, *args],
         check=True,
         capture_output=True,
         text=True,
