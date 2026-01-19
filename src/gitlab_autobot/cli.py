@@ -39,6 +39,36 @@ def get_current_branch() -> str | None:
         return None
 
 
+def get_commit_count(target_branch: str, source_branch: str) -> int:
+    try:
+        result = subprocess.run(
+            ["git", "rev-list", "--count", f"{target_branch}..{source_branch}"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return int(result.stdout.strip())
+    except (subprocess.CalledProcessError, FileNotFoundError, ValueError):
+        return 0
+
+
+def get_last_commit_info() -> dict[str, str] | None:
+    try:
+        result = subprocess.run(
+            ["git", "log", "-1", "--pretty=%s%n%b"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        output = result.stdout.strip()
+        parts = output.split('\n', 1)
+        title = parts[0]
+        message = parts[1] if len(parts) > 1 else ""
+        return {"title": title, "message": message}
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+
 def ensure_authenticated(client: GitLabClient) -> dict[str, str]:
     try:
         user = client.get_current_user()
@@ -53,10 +83,10 @@ def ensure_authenticated(client: GitLabClient) -> dict[str, str]:
 def parse_args() -> argparse.Namespace:
     creds = load_credentials()
     saved_base_url = creds.get("base_url")
-    epilog = """
+    epilog = '''
     Saved credentials will be used for authentication if available.
     The GitLab token can also be provided via the GITLAB_TOKEN environment variable.
-    """
+    '''
     parser = argparse.ArgumentParser(
         description="Create a GitLab merge request without interactive prompts.",
         epilog=epilog,
@@ -146,8 +176,20 @@ def main() -> None:
     assignee = args.assignee
     reviewers = parse_reviewers(args.reviewers)
 
-    title = args.title if args.title else f"Merge {source_branch} into {target_branch}"
+    title = args.title
     description = args.message
+
+    commit_count = get_commit_count(target_branch, source_branch)
+    if commit_count == 1:
+        last_commit = get_last_commit_info()
+        if last_commit:
+            if not title:
+                title = last_commit["title"]
+            if not description:
+                description = last_commit["message"]
+
+    if not title:
+        title = f"Merge {source_branch} into {target_branch}"
 
     try:
         mr = client.create_merge_request(
