@@ -85,6 +85,8 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Target branch name.",
     )
+    parser.add_argument("--title", help="Merge request title.")
+    parser.add_argument("-m", "--message", help="Merge request message (description).")
     parser.add_argument("-a", "--assignee", help="Assignee username.")
     parser.add_argument(
         "-r",
@@ -144,7 +146,8 @@ def main() -> None:
     assignee = args.assignee
     reviewers = parse_reviewers(args.reviewers)
 
-    title = f"Merge {source_branch} into {target_branch}"
+    title = args.title if args.title else f"Merge {source_branch} into {target_branch}"
+    description = args.message
 
     try:
         mr = client.create_merge_request(
@@ -152,6 +155,7 @@ def main() -> None:
             source_branch=source_branch,
             target_branch=target_branch,
             title=title,
+            description=description,
             assignee=assignee,
             reviewers=reviewers,
         )
