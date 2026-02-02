@@ -81,3 +81,8 @@ class GitLabClient:
         return self.request(
             "POST", f"/projects/{project_id}/merge_requests", json=payload
         ).json()
+    
+    def compare(self, project_path: str, from_ref: str, to_ref: str) -> dict[str, Any]:
+        project_id = self.get_project_id(project_path)
+        params = {"from": from_ref, "to": to_ref}
+        return self.request("GET", f"/projects/{project_id}/repository/compare", params=params).json()

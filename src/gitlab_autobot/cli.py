@@ -296,31 +296,46 @@ def create_mr_main(args: argparse.Namespace) -> None:
 
 
 def diff_content_main(args: argparse.Namespace) -> None:
-    synced, missing, new = get_diff_commits(args.source_branch, args.target_branch)
+    creds = load_credentials()
+    token = creds.get("token") or os.getenv("GITLAB_TOKEN")
+    if not token:
+        raise SystemExit("Missing token. Set GITLAB_TOKEN or save credentials.")
 
-    # Rudimentary squash detection (can be improved)
-    # For now, we'll just list remaining commits as missing/new
+    base_url = args.base_url
+    if not base_url:
+        raise SystemExit("Missing base URL. Provide --base-url or save credentials.")
 
-    print(f"Comparison between {args.source_branch} and {args.target_branch}")
+    client = GitLabClient(base_url=base_url, token=token)
+
+    try:
+        user_info = ensure_authenticated(client)
+    except AuthError:
+        raise SystemExit("Authentication failed. Provide a valid token.")
+
+    project_path = args.project_path
+    if not project_path:
+        project_path = get_project_path_from_git()
+        if not project_path:
+            raise SystemExit(
+                "Could not auto-detect project path from git remote 'origin'. "
+                "Please provide it using the --project-path argument."
+            )
+    
+    source_branch = args.source_branch
+    target_branch = args.target_branch
+
+    comparison = client.compare(project_path, target_branch, source_branch)
+    commits = comparison.get("commits", [])
+
+    print(f"Comparison between {source_branch} and {target_branch}")
     print("-" * 80)
-    print("{:<12} {:<15} {:<15} {}".format("Status", "Source Commit", "Target Commit", "Message"))
+    print("{:<12} {:<15} {}".format("Status", "Commit", "Message"))
     print("-" * 80)
 
-    for src, tgt, msg in synced:
-        origin_branch = extract_source_branch_from_merge(msg)
-        if origin_branch:
-            msg = f"{msg} (from {origin_branch})"
-        print(f"✅ SYNCED      {src[:7]}           {tgt[:7]}           {msg}")
-    for src, msg in missing:
-        origin_branch = extract_source_branch_from_merge(msg)
-        if origin_branch:
-            msg = f"{msg} (from {origin_branch})"
-        print(f"❌ MISSING     {src[:7]}           -                 {msg}")
-    for tgt, msg in new:
-        origin_branch = extract_source_branch_from_merge(msg)
-        if origin_branch:
-            msg = f"{msg} (from {origin_branch})"
-        print(f"🆕 NEW         -                 {tgt[:7]}           {msg}")
+    for commit in commits:
+        short_id = commit['short_id']
+        title = commit['title']
+        print(f"???? UNKNOWN     {short_id}           {title}")
 
 
 def auto_cherry_pick_main(args: argparse.Namespace) -> None:
@@ -448,8 +463,18 @@ def main() -> None:
     parser_diff = subparsers.add_parser(
         "diff-content", help="Compare two branches based on diff content."
     )
-    parser_diff.add_argument("source_branch", help="Source branch name.")
-    parser_diff.add_argument("target_branch", help="Target branch name.")
+    parser_diff.add_argument(
+        "-s",
+        "--source-branch",
+        required=True,
+        help="Source branch name.",
+    )
+    parser_diff.add_argument(
+        "-t",
+        "--target-branch",
+        required=True,
+        help="Target branch name.",
+    )
     parser_diff.set_defaults(func=diff_content_main)
 
     # auto-cherry-pick command
