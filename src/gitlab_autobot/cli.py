@@ -55,10 +55,10 @@ def get_commit_count(target_branch: str, source_branch: str) -> int:
         return 0
 
 
-def get_last_commit_info() -> dict[str, str] | None:
+def get_last_commit_info(commit_hash: str = "HEAD") -> dict[str, str] | None:
     try:
         result = subprocess.run(
-            ["git", "log", "-1", "--pretty=%s%n%b"],
+            ["git", "log", "-1", "--pretty=%s%n%b", commit_hash],
             capture_output=True,
             text=True,
             check=True,
@@ -70,6 +70,13 @@ def get_last_commit_info() -> dict[str, str] | None:
         return {"title": title, "message": message}
     except (subprocess.CalledProcessError, FileNotFoundError):
         return None
+
+
+def extract_source_branch_from_merge(message: str) -> str | None:
+    match = re.search(r"Merge branch '(.+?)'", message)
+    if match:
+        return match.group(1)
+    return None
 
 
 def ensure_authenticated(client: GitLabClient) -> dict[str, str]:
@@ -98,7 +105,7 @@ def get_commits(branch: str) -> list[dict[str, str]]:
         check=True,
     )
     commits = []
-    for line in result.stdout.strip().split("\n"):
+    for line in result.stdout.strip().split('\n'):
         parts = line.strip().split("|", 3)
         commits.append({
             "hash": parts[0],
@@ -244,22 +251,22 @@ def diff_content_main(args: argparse.Namespace) -> None:
     target_commits_rev = f"{source_branch}..{target_branch}"
 
     source_hashes = set(
-        subprocess.check_output(["git", "rev-list", "--no-merges", source_commits_rev])
+        subprocess.check_output(["git", "rev-list", source_commits_rev])
         .decode()
         .split()
     )
     target_hashes = set(
-        subprocess.check_output(["git", "rev-list", "--no-merges", target_commits_rev])
+        subprocess.check_output(["git", "rev-list", target_commits_rev])
         .decode()
         .split()
     )
 
     source_commits = {
-        h: {"patch_id": get_patch_id(h), "info": get_last_commit_info()}
+        h: {"patch_id": get_patch_id(h), "info": get_last_commit_info(h)}
         for h in source_hashes
     }
     target_commits = {
-        h: {"patch_id": get_patch_id(h), "info": get_last_commit_info()}
+        h: {"patch_id": get_patch_id(h), "info": get_last_commit_info(h)}
         for h in target_hashes
     }
 
@@ -295,10 +302,19 @@ def diff_content_main(args: argparse.Namespace) -> None:
     print("-" * 80)
 
     for src, tgt, msg in synced:
+        origin_branch = extract_source_branch_from_merge(msg)
+        if origin_branch:
+            msg = f"{msg} (from {origin_branch})"
         print(f"✅ SYNCED      {src[:7]}           {tgt[:7]}           {msg}")
     for src, msg in missing:
+        origin_branch = extract_source_branch_from_merge(msg)
+        if origin_branch:
+            msg = f"{msg} (from {origin_branch})"
         print(f"❌ MISSING     {src[:7]}           -                 {msg}")
     for tgt, msg in new:
+        origin_branch = extract_source_branch_from_merge(msg)
+        if origin_branch:
+            msg = f"{msg} (from {origin_branch})"
         print(f"🆕 NEW         -                 {tgt[:7]}           {msg}")
 
 
