@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 import textwrap
+from typing import Any, Iterable
 from collections import defaultdict
 
 from gitlab_autobot.config import load_credentials, save_credentials
@@ -126,6 +127,123 @@ def get_patch_id(commit_hash: str) -> str | None:
         return None
     except (subprocess.CalledProcessError, FileNotFoundError, IndexError):
         return None
+
+
+def flatten_diff_entries(diff_entries: Iterable[dict[str, Any]]) -> str:
+    parts = []
+    for entry in diff_entries:
+        diff_text = entry.get("diff")
+        if diff_text:
+            parts.append(diff_text.rstrip("\n"))
+    if not parts:
+        return ""
+    return "\n".join(parts) + "\n"
+
+
+def get_patch_id_from_diff(diff_text: str) -> str | None:
+    if not diff_text.strip():
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "patch-id"],
+            input=diff_text,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0 or not result.stdout:
+            return None
+        return result.stdout.strip().split(" ")[0]
+    except FileNotFoundError:
+        return None
+
+
+def get_remote_diff_commits(
+    client: GitLabClient,
+    project_path: str,
+    source_branch: str,
+    target_branch: str,
+) -> tuple[list[tuple], list[tuple], list[tuple]]:
+    project_id = client.get_project_id(project_path)
+    source_compare = client.compare(
+        project_path=project_path,
+        from_ref=target_branch,
+        to_ref=source_branch,
+        project_id=project_id,
+    )
+    target_compare = client.compare(
+        project_path=project_path,
+        from_ref=source_branch,
+        to_ref=target_branch,
+        project_id=project_id,
+    )
+    source_commits_raw = source_compare.get("commits", [])
+    target_commits_raw = target_compare.get("commits", [])
+    assert isinstance(source_commits_raw, list)
+    assert isinstance(target_commits_raw, list)
+
+    patch_id_cache: dict[str, str | None] = {}
+
+    def commit_patch_id(commit_hash: str) -> str | None:
+        if commit_hash in patch_id_cache:
+            return patch_id_cache[commit_hash]
+        diff_entries = client.get_commit_diff(
+            project_path=project_path,
+            commit_sha=commit_hash,
+            project_id=project_id,
+        )
+        assert isinstance(diff_entries, list)
+        diff_text = flatten_diff_entries(diff_entries)
+        patch_id = get_patch_id_from_diff(diff_text)
+        patch_id_cache[commit_hash] = patch_id
+        return patch_id
+
+    def build_commit_map(
+        commits_raw: list[dict[str, Any]]
+    ) -> dict[str, dict[str, Any]]:
+        commit_map: dict[str, dict[str, Any]] = {}
+        for commit in commits_raw:
+            commit_hash = commit.get("id") or commit.get("sha")
+            if not commit_hash:
+                continue
+            patch_id = commit_patch_id(commit_hash)
+            title = commit.get("title") or commit.get("message") or ""
+            commit_map[commit_hash] = {
+                "patch_id": patch_id,
+                "info": {"title": title},
+            }
+        return commit_map
+
+    source_commits = build_commit_map(source_commits_raw)
+    target_commits = build_commit_map(target_commits_raw)
+
+    source_by_patch = {
+        c["patch_id"]: h for h, c in source_commits.items() if c["patch_id"]
+    }
+    target_by_patch = {
+        c["patch_id"]: h for h, c in target_commits.items() if c["patch_id"]
+    }
+
+    synced = []
+    missing = []
+    new = []
+
+    for patch_id, commit_hash in source_by_patch.items():
+        if patch_id in target_by_patch:
+            synced.append(
+                (
+                    commit_hash,
+                    target_by_patch[patch_id],
+                    source_commits[commit_hash]["info"]["title"],
+                )
+            )
+            del target_by_patch[patch_id]
+        else:
+            missing.append((commit_hash, source_commits[commit_hash]["info"]["title"]))
+
+    for patch_id, commit_hash in target_by_patch.items():
+        new.append((commit_hash, target_commits[commit_hash]["info"]["title"]))
+
+    return synced, missing, new
 
 
 def get_diff(commit_hash: str) -> str:
@@ -292,8 +410,27 @@ def diff_content_main(args: argparse.Namespace) -> None:
     source_branch = args.source_branch
     target_branch = args.target_branch
 
-    # Use local git to compare branches with patch-id detection
-    synced, missing, new = get_diff_commits(source_branch, target_branch)
+    creds = load_credentials()
+    token = creds.get("token") or os.getenv("GITLAB_TOKEN")
+    base_url = args.base_url or creds.get("base_url")
+    project_path = args.project_path or get_project_path_from_git()
+
+    if token and base_url and project_path:
+        client = GitLabClient(base_url=base_url, token=token)
+        try:
+            synced, missing, new = get_remote_diff_commits(
+                client=client,
+                project_path=project_path,
+                source_branch=source_branch,
+                target_branch=target_branch,
+            )
+        except AuthError:
+            raise SystemExit("Authentication failed. Provide a valid token.")
+        except GitLabError as exc:
+            raise SystemExit(str(exc))
+    else:
+        # Use local git to compare branches with patch-id detection
+        synced, missing, new = get_diff_commits(source_branch, target_branch)
 
     print(f"Comparison between {source_branch} and {target_branch}")
     print("-" * 80)
@@ -445,8 +582,25 @@ def main() -> None:
     # diff-content command
     parser_diff = subparsers.add_parser(
         "diff-content",
-        help="Compare two branches based on diff content using local git.",
-        description="Compares branches using patch-id to detect cherry-picked commits.",
+        help="Compare two branches based on diff content.",
+        description=(
+            "Compares branches using GitLab's compare API when credentials are "
+            "available, with a local git fallback."
+        ),
+    )
+    parser_diff.add_argument(
+        "-b",
+        "--base-url",
+        default=saved_base_url,
+        help=f"GitLab base URL. (saved: {saved_base_url})",
+    )
+    parser_diff.add_argument(
+        "-p",
+        "--project-path",
+        help=(
+            "GitLab project path (e.g. 'group/project'). If not provided, it will "
+            "be auto-detected from the git remote URL."
+        ),
     )
     parser_diff.add_argument(
         "-s",

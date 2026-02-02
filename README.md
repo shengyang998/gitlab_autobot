@@ -122,10 +122,17 @@ Credentials are stored at `~/.config/gitlab_autobot/credentials.json` and will b
 Run the CLI with the `diff-content` subcommand:
 
 ```bash
-gitlab-autobot diff-content <source_branch> <target_branch>
+gitlab-autobot diff-content --source-branch <source_branch> --target-branch <target_branch>
 ```
 
-This command compares the content of two branches and displays the diff.
+This command compares the content of two branches. When GitLab credentials are
+available (saved config or `GITLAB_TOKEN`), it uses the GitLab compare API and
+falls back to local git diffing if not.
+
+Optional arguments:
+
+*   `-b`, `--base-url`: GitLab base URL. If not provided, the saved URL is used.
+*   `-p`, `--project-path`: GitLab project path (e.g., 'group/project'). Auto-detected from the git remote if omitted.
 
 ## MCP server usage (MR tooling)
 

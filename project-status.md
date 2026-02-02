@@ -3,11 +3,19 @@
 Date: 2026-02-02
 Status: On track
 
+## Current Status
+- Working branch: feature/acp-changes
+- Focus: Remote diff-content integration for GitLab compare API.
+
+## Decisions
+- Keep diff-content output based on patch-id comparisons without merge message parsing, since that logic is no longer used.
+- Synced commit display now uses "source->target" to reflect cherry-picked hashes.
+- diff-content now prefers the GitLab compare API when credentials are available and falls back to local git otherwise.
+- Patch-id matching uses GitLab commit diff results to keep synced/missing/new output consistent.
+
 ## Changes
 - Removed dead code in cli.py for unused merge source extraction.
 - Synced commit output shows both source and target hashes.
-
-## Decisions
-- Keep diff-content output based on patch-id comparisons without merge
-  message parsing, since that logic is no longer used.
-- Synced commit display now uses "source->target" to reflect cherry-picked hashes.
+- Added GitLab client support for commit diff retrieval and compare with cached project id usage.
+- Updated diff-content CLI arguments for base URL and project path.
+- Updated README documentation for diff-content usage.
