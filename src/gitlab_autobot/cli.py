@@ -21,7 +21,7 @@ def get_project_path_from_git() -> str | None:
             check=True,
         )
         url = result.stdout.strip()
-        match = re.search(r"(?:git@|https://)[^:/]+[:/](.+?)(?:\\.git)?$", url)
+        match = re.search(r"(?:git@|https://)[^:/]+[:/](.+?)(?:\.git)?$", url)
         if match:
             return match.group(1)
         return None
