@@ -153,6 +153,10 @@ This command cherry-picks commits from the source branch that are missing in the
 target branch, then creates a merge request for the new branch. Merge commits
 are skipped because cherry-picking merges is not supported.
 
+The temporary branch name is formatted as `cherry-pick/<source>-to-<target>-<rand>`.
+Any `/` characters in the source or target branch names are replaced with `-`,
+and `<rand>` is a 5-character alphanumeric suffix to avoid collisions.
+
 Optional arguments:
 
 *   `-b`, `--base-url`: GitLab base URL. If not provided, the saved URL is used.

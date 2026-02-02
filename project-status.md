@@ -4,8 +4,8 @@ Date: 2026-02-02
 Status: On track
 
 ## Current Status
-- Working branch: cursor/autobot-merge-commit-display-15f9
-- Focus: Fix diff-content merge filtering for compare API output.
+- Working branch: cursor/cherry-pick-4803
+- Focus: Update branch-cherry-pick temporary branch naming.
 
 ## Decisions
 - Keep diff-content output based on patch-id comparisons without merge message parsing, since that logic is no longer used.
@@ -14,6 +14,8 @@ Status: On track
 - Patch-id matching uses GitLab commit diff results to keep synced/missing/new output consistent.
 - Squash detection uses diff-line containment (with file context) to mark commits as synced.
 - Branch-cherry-pick hides merge commits because the tool cannot cherry-pick merges without manual intervention.
+- Branch-cherry-pick temporary branches use a cherry-pick/ prefix with sanitized
+  branch names and a 5-character alphanumeric suffix to avoid collisions.
 - diff-content hides merge commits by default with an include flag for audits.
 - Renamed CLI command to branch-cherry-pick for clarity.
 - Use compare parent_ids to identify merge commits when diff-content uses GitLab API.
@@ -30,3 +32,4 @@ Status: On track
 - Updated CLI messages and subcommand name to branch-cherry-pick.
 - Documented branch-cherry-pick CLI usage in README.
 - Filter diff-content merge commits using compare metadata with local fallback.
+- Updated branch-cherry-pick temporary branch naming format and suffix.
