@@ -4,6 +4,8 @@ import argparse
 import collections
 import os
 import re
+import secrets
+import string
 import subprocess
 import textwrap
 from typing import Any, Iterable
@@ -88,6 +90,19 @@ def parse_reviewers(raw: str | None) -> list[str]:
     if not raw:
         return []
     return [name.strip() for name in raw.split(",") if name.strip()]
+
+
+def build_cherry_pick_branch_name(source_branch: str, target_branch: str) -> str:
+    safe_source = source_branch.replace("/", "-")
+    safe_target = target_branch.replace("/", "-")
+    suffix = "".join(
+        secrets.choice(string.ascii_lowercase + string.digits) for _ in range(5)
+    )
+    assert safe_source
+    assert safe_target
+    assert len(suffix) == 5
+    assert suffix.isalnum()
+    return f"cherry-pick/{safe_source}-to-{safe_target}-{suffix}"
 
 
 def get_commits(branch: str) -> list[dict[str, str]]:
@@ -672,7 +687,7 @@ def auto_cherry_pick_main(args: argparse.Namespace) -> None:
                 "not supported by branch-cherry-pick)"
             )
 
-        new_branch_name = f"cherry-pick-{source_branch}-to-{target_branch}"
+        new_branch_name = build_cherry_pick_branch_name(source_branch, target_branch)
         print(f"\n2. A new branch will be created: {new_branch_name}")
 
         print("\n3. The new branch will be pushed to origin.")
@@ -688,7 +703,7 @@ def auto_cherry_pick_main(args: argparse.Namespace) -> None:
         return
 
     # Create a new branch
-    new_branch_name = f"cherry-pick-{source_branch}-to-{target_branch}"
+    new_branch_name = build_cherry_pick_branch_name(source_branch, target_branch)
     try:
         subprocess.check_call(["git", "checkout", target_branch])
         subprocess.check_call(["git", "checkout", "-b", new_branch_name])
