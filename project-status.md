@@ -4,8 +4,8 @@ Date: 2026-02-02
 Status: On track
 
 ## Current Status
-- Working branch: cursor/cherry-pick-merge-commits-visibility-b02c
-- Focus: Hiding merge commits in diff-content by default.
+- Working branch: cursor/cherry-pick-name-update-1f14
+- Focus: Rename command to branch-cherry-pick.
 
 ## Decisions
 - Keep diff-content output based on patch-id comparisons without merge message parsing, since that logic is no longer used.
@@ -13,8 +13,9 @@ Status: On track
 - diff-content now prefers the GitLab compare API when credentials are available and falls back to local git otherwise.
 - Patch-id matching uses GitLab commit diff results to keep synced/missing/new output consistent.
 - Squash detection uses diff-line containment (with file context) to mark commits as synced.
-- Auto-cherry-pick hides merge commits because the tool cannot cherry-pick merges without manual intervention.
+- Branch-cherry-pick hides merge commits because the tool cannot cherry-pick merges without manual intervention.
 - diff-content hides merge commits by default with an include flag for audits.
+- Renamed CLI command to branch-cherry-pick for clarity.
 
 ## Changes
 - Removed dead code in cli.py for unused merge source extraction.
@@ -23,5 +24,6 @@ Status: On track
 - Updated diff-content CLI arguments for base URL and project path.
 - Updated README documentation for diff-content usage.
 - Added diff-line based matching to detect squashed commits for diff-content.
-- Auto-cherry-pick now filters merge commits from dry-run and execution lists.
+- Branch-cherry-pick now filters merge commits from dry-run and execution lists.
 - diff-content filters merge commits by default and adds --include-merges.
+- Updated CLI messages and subcommand name to branch-cherry-pick.

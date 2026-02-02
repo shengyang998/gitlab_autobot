@@ -607,7 +607,7 @@ def auto_cherry_pick_main(args: argparse.Namespace) -> None:
         if skipped_merges:
             print(
                 "No non-merge commits to cherry-pick. "
-                "Auto-cherry-pick skips merge commits."
+                "Branch-cherry-pick skips merge commits."
             )
         else:
             print("No commits to cherry-pick.")
@@ -616,7 +616,7 @@ def auto_cherry_pick_main(args: argparse.Namespace) -> None:
     if skipped_merges and not args.dry_run:
         print(
             f"Note: Skipping {skipped_merges} merge commit(s) because "
-            "auto-cherry-pick does not support cherry-picking merges."
+            "branch-cherry-pick does not support cherry-picking merges."
         )
 
     commit_hashes = [m[0] for m in missing_non_merge]
@@ -629,7 +629,7 @@ def auto_cherry_pick_main(args: argparse.Namespace) -> None:
         if skipped_merges:
             print(
                 f"  (skipped {skipped_merges} merge commit(s) "
-                "not supported by auto-cherry-pick)"
+                "not supported by branch-cherry-pick)"
             )
 
         new_branch_name = f"cherry-pick-{source_branch}-to-{target_branch}"
@@ -778,9 +778,10 @@ def main() -> None:
     )
     parser_diff.set_defaults(func=diff_content_main)
 
-    # auto-cherry-pick command
+    # branch-cherry-pick command
     parser_auto_cherry_pick = subparsers.add_parser(
-        "auto-cherry-pick", help="Automate cherry-picking commits and creating a merge request."
+        "branch-cherry-pick",
+        help="Automate cherry-picking commits and creating a merge request.",
     )
     parser_auto_cherry_pick.add_argument(
         "-b",
