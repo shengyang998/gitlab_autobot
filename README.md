@@ -129,6 +129,10 @@ This command compares the content of two branches. When GitLab credentials are
 available (saved config or `GITLAB_TOKEN`), it uses the GitLab compare API and
 falls back to local git diffing if not.
 
+The comparison is content-based: it matches commits by patch-id and also detects
+when a commit's changed lines are fully contained in a target commit (to treat
+squashed commits as synced).
+
 Optional arguments:
 
 *   `-b`, `--base-url`: GitLab base URL. If not provided, the saved URL is used.

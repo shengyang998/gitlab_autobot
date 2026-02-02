@@ -157,6 +157,98 @@ def get_patch_id_from_diff(diff_text: str) -> str | None:
         return None
 
 
+def parse_diff_lines(diff_text: str) -> collections.Counter[str]:
+    lines = collections.Counter()
+    current_file = ""
+    for line in diff_text.split("\n"):
+        if line.startswith("diff --git "):
+            parts = line.split()
+            if len(parts) >= 4:
+                current_file = parts[3]
+                if current_file.startswith("b/"):
+                    current_file = current_file[2:]
+        elif line.startswith("+++ "):
+            path = line[4:].strip()
+            if path.startswith("b/"):
+                current_file = path[2:]
+        elif line.startswith("--- "):
+            path = line[4:].strip()
+            if not current_file and path.startswith("a/"):
+                current_file = path[2:]
+        elif line.startswith(("+", "-")) and not line.startswith(("+++", "---")):
+            prefix = f"{current_file}:" if current_file else ""
+            lines[f"{prefix}{line[0]}{line[1:]}"] += 1
+    return lines
+
+
+def classify_diff_commits(
+    source_commits: dict[str, dict[str, Any]],
+    target_commits: dict[str, dict[str, Any]],
+) -> tuple[list[tuple], list[tuple], list[tuple]]:
+    source_by_patch = {
+        c["patch_id"]: h for h, c in source_commits.items() if c["patch_id"]
+    }
+    target_by_patch = {
+        c["patch_id"]: h for h, c in target_commits.items() if c["patch_id"]
+    }
+
+    synced = []
+    missing = []
+    new = []
+    matched_source: set[str] = set()
+    matched_target: set[str] = set()
+
+    for patch_id, commit_hash in source_by_patch.items():
+        target_hash = target_by_patch.get(patch_id)
+        if target_hash:
+            synced.append(
+                (
+                    commit_hash,
+                    target_hash,
+                    source_commits[commit_hash]["info"]["title"],
+                )
+            )
+            matched_source.add(commit_hash)
+            matched_target.add(target_hash)
+
+    for commit_hash, source_data in source_commits.items():
+        if commit_hash in matched_source:
+            continue
+        source_lines = source_data["diff_lines"]
+        if not source_lines:
+            continue
+        best_target = None
+        best_extra = None
+        for target_hash, target_data in target_commits.items():
+            target_lines = target_data["diff_lines"]
+            if not target_lines:
+                continue
+            if any(
+                target_lines[key] < count for key, count in source_lines.items()
+            ):
+                continue
+            extra = sum((target_lines - source_lines).values())
+            if best_target is None or extra < best_extra:
+                best_target = target_hash
+                best_extra = extra
+        if best_target:
+            synced.append(
+                (commit_hash, best_target, source_data["info"]["title"])
+            )
+            matched_source.add(commit_hash)
+            matched_target.add(best_target)
+
+    for commit_hash, source_data in source_commits.items():
+        if commit_hash not in matched_source:
+            missing.append((commit_hash, source_data["info"]["title"]))
+
+    for commit_hash, target_data in target_commits.items():
+        if commit_hash not in matched_target:
+            new.append((commit_hash, target_data["info"]["title"]))
+
+    return synced, missing, new
+
+
 def get_remote_diff_commits(
     client: GitLabClient,
     project_path: str,
@@ -181,11 +273,13 @@ def get_remote_diff_commits(
     assert isinstance(source_commits_raw, list)
     assert isinstance(target_commits_raw, list)
 
+    diff_cache: dict[str, str] = {}
     patch_id_cache: dict[str, str | None] = {}
+    diff_lines_cache: dict[str, collections.Counter[str]] = {}
 
-    def commit_patch_id(commit_hash: str) -> str | None:
-        if commit_hash in patch_id_cache:
-            return patch_id_cache[commit_hash]
+    def commit_diff_text(commit_hash: str) -> str:
+        if commit_hash in diff_cache:
+            return diff_cache[commit_hash]
         diff_entries = client.get_commit_diff(
             project_path=project_path,
             commit_sha=commit_hash,
@@ -193,9 +287,24 @@ def get_remote_diff_commits(
         )
         assert isinstance(diff_entries, list)
         diff_text = flatten_diff_entries(diff_entries)
+        diff_cache[commit_hash] = diff_text
+        return diff_text
+
+    def commit_patch_id(commit_hash: str) -> str | None:
+        if commit_hash in patch_id_cache:
+            return patch_id_cache[commit_hash]
+        diff_text = commit_diff_text(commit_hash)
         patch_id = get_patch_id_from_diff(diff_text)
         patch_id_cache[commit_hash] = patch_id
         return patch_id
+
+    def commit_diff_lines(commit_hash: str) -> collections.Counter[str]:
+        if commit_hash in diff_lines_cache:
+            return diff_lines_cache[commit_hash]
+        diff_text = commit_diff_text(commit_hash)
+        diff_lines = parse_diff_lines(diff_text)
+        diff_lines_cache[commit_hash] = diff_lines
+        return diff_lines
 
     def build_commit_map(
         commits_raw: list[dict[str, Any]]
@@ -206,66 +315,28 @@ def get_remote_diff_commits(
             if not commit_hash:
                 continue
             patch_id = commit_patch_id(commit_hash)
+            diff_lines = commit_diff_lines(commit_hash)
             title = commit.get("title") or commit.get("message") or ""
             commit_map[commit_hash] = {
                 "patch_id": patch_id,
+                "diff_lines": diff_lines,
                 "info": {"title": title},
             }
         return commit_map
 
     source_commits = build_commit_map(source_commits_raw)
     target_commits = build_commit_map(target_commits_raw)
-
-    source_by_patch = {
-        c["patch_id"]: h for h, c in source_commits.items() if c["patch_id"]
-    }
-    target_by_patch = {
-        c["patch_id"]: h for h, c in target_commits.items() if c["patch_id"]
-    }
-
-    synced = []
-    missing = []
-    new = []
-
-    for patch_id, commit_hash in source_by_patch.items():
-        if patch_id in target_by_patch:
-            synced.append(
-                (
-                    commit_hash,
-                    target_by_patch[patch_id],
-                    source_commits[commit_hash]["info"]["title"],
-                )
-            )
-            del target_by_patch[patch_id]
-        else:
-            missing.append((commit_hash, source_commits[commit_hash]["info"]["title"]))
-
-    for patch_id, commit_hash in target_by_patch.items():
-        new.append((commit_hash, target_commits[commit_hash]["info"]["title"]))
-
-    return synced, missing, new
+    return classify_diff_commits(source_commits, target_commits)
 
 
 def get_diff(commit_hash: str) -> str:
     result = subprocess.run(
-        ["git", "show", commit_hash], capture_output=True, text=True, check=True
+        ["git", "show", "--pretty=format:", commit_hash],
+        capture_output=True,
+        text=True,
+        check=True,
     )
     return result.stdout
-
-
-def parse_diff_hunks(diff: str) -> set[str]:
-    hunks = set()
-    current_hunk = []
-    for line in diff.split('\n'):
-        if line.startswith("@@"):
-            if current_hunk:
-                hunks.add("".join(current_hunk))
-            current_hunk = []
-        elif line.startswith(("+", "-")) and not line.startswith(("+++", "---")):
-            current_hunk.append(line[1:])
-    if current_hunk:
-        hunks.add("".join(current_hunk))
-    return hunks
 
 
 def get_diff_commits(
@@ -285,39 +356,23 @@ def get_diff_commits(
         .split()
     )
 
-    source_commits = {
-        h: {"patch_id": get_patch_id(h), "info": get_last_commit_info(h)}
-        for h in source_hashes
-    }
-    target_commits = {
-        h: {"patch_id": get_patch_id(h), "info": get_last_commit_info(h)}
-        for h in target_hashes
-    }
+    def build_commit_map(commit_hashes: set[str]) -> dict[str, dict[str, Any]]:
+        commit_map: dict[str, dict[str, Any]] = {}
+        for commit_hash in commit_hashes:
+            diff_text = get_diff(commit_hash)
+            patch_id = get_patch_id_from_diff(diff_text)
+            diff_lines = parse_diff_lines(diff_text)
+            info = get_last_commit_info(commit_hash) or {}
+            commit_map[commit_hash] = {
+                "patch_id": patch_id,
+                "diff_lines": diff_lines,
+                "info": {"title": info.get("title", "")},
+            }
+        return commit_map
 
-    source_by_patch = {c["patch_id"]: h for h, c in source_commits.items() if c["patch_id"]}
-    target_by_patch = {c["patch_id"]: h for h, c in target_commits.items() if c["patch_id"]}
-
-    synced = []
-    missing = []
-    new = []
-
-    for patch_id, commit_hash in source_by_patch.items():
-        if patch_id in target_by_patch:
-            synced.append(
-                (
-                    commit_hash,
-                    target_by_patch[patch_id],
-                    source_commits[commit_hash]["info"]["title"],
-                )
-            )
-            del target_by_patch[patch_id]
-        else:
-            missing.append((commit_hash, source_commits[commit_hash]["info"]["title"]))
-
-    for patch_id, commit_hash in target_by_patch.items():
-        new.append((commit_hash, target_commits[commit_hash]["info"]["title"]))
-
-    return synced, missing, new
+    source_commits = build_commit_map(source_hashes)
+    target_commits = build_commit_map(target_hashes)
+    return classify_diff_commits(source_commits, target_commits)
 
 
 def create_mr_main(args: argparse.Namespace) -> None:

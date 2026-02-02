@@ -8,3 +8,5 @@
 - Verified diff-content used local git only; compare API was unused.
 - Updated diff-content to use GitLab compare and commit diff APIs when credentials are available, with local fallback.
 - Documented diff-content CLI options and behavior in README.
+- Added squash-aware diff-content matching using diff-line containment.
+- Updated diff-content documentation to describe squash-aware comparisons.
