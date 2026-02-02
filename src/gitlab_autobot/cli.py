@@ -21,7 +21,7 @@ def get_project_path_from_git() -> str | None:
             check=True,
         )
         url = result.stdout.strip()
-        match = re.search(r"(?:git@|https://)[^:/]+[:/](.+?)(?:\.git)?$", url)
+        match = re.search(r"(?:git@|https://)[^:/]+[:/](.+?)(?:\\.git)?$", url)
         if match:
             return match.group(1)
         return None
@@ -157,6 +157,58 @@ def parse_diff_hunks(diff: str) -> set[str]:
     return hunks
 
 
+def get_diff_commits(
+    source_branch: str, target_branch: str
+) -> tuple[list[tuple], list[tuple], list[tuple]]:
+    source_commits_rev = f"{target_branch}..{source_branch}"
+    target_commits_rev = f"{source_branch}..{target_branch}"
+
+    source_hashes = set(
+        subprocess.check_output(["git", "rev-list", source_commits_rev])
+        .decode()
+        .split()
+    )
+    target_hashes = set(
+        subprocess.check_output(["git", "rev-list", target_commits_rev])
+        .decode()
+        .split()
+    )
+
+    source_commits = {
+        h: {"patch_id": get_patch_id(h), "info": get_last_commit_info(h)}
+        for h in source_hashes
+    }
+    target_commits = {
+        h: {"patch_id": get_patch_id(h), "info": get_last_commit_info(h)}
+        for h in target_hashes
+    }
+
+    source_by_patch = {c["patch_id"]: h for h, c in source_commits.items() if c["patch_id"]}
+    target_by_patch = {c["patch_id"]: h for h, c in target_commits.items() if c["patch_id"]}
+
+    synced = []
+    missing = []
+    new = []
+
+    for patch_id, commit_hash in source_by_patch.items():
+        if patch_id in target_by_patch:
+            synced.append(
+                (
+                    commit_hash,
+                    target_by_patch[patch_id],
+                    source_commits[commit_hash]["info"]["title"],
+                )
+            )
+            del target_by_patch[patch_id]
+        else:
+            missing.append((commit_hash, source_commits[commit_hash]["info"]["title"]))
+
+    for patch_id, commit_hash in target_by_patch.items():
+        new.append((commit_hash, target_commits[commit_hash]["info"]["title"]))
+
+    return synced, missing, new
+
+
 def create_mr_main(args: argparse.Namespace) -> None:
     creds = load_credentials()
     token = creds.get("token") or os.getenv("GITLAB_TOKEN")
@@ -244,59 +296,12 @@ def create_mr_main(args: argparse.Namespace) -> None:
 
 
 def diff_content_main(args: argparse.Namespace) -> None:
-    source_branch = args.source_branch
-    target_branch = args.target_branch
-
-    source_commits_rev = f"{target_branch}..{source_branch}"
-    target_commits_rev = f"{source_branch}..{target_branch}"
-
-    source_hashes = set(
-        subprocess.check_output(["git", "rev-list", source_commits_rev])
-        .decode()
-        .split()
-    )
-    target_hashes = set(
-        subprocess.check_output(["git", "rev-list", target_commits_rev])
-        .decode()
-        .split()
-    )
-
-    source_commits = {
-        h: {"patch_id": get_patch_id(h), "info": get_last_commit_info(h)}
-        for h in source_hashes
-    }
-    target_commits = {
-        h: {"patch_id": get_patch_id(h), "info": get_last_commit_info(h)}
-        for h in target_hashes
-    }
-
-    source_by_patch = {c["patch_id"]: h for h, c in source_commits.items() if c["patch_id"]}
-    target_by_patch = {c["patch_id"]: h for h, c in target_commits.items() if c["patch_id"]}
-
-    synced = []
-    missing = []
-    new = []
-
-    for patch_id, commit_hash in source_by_patch.items():
-        if patch_id in target_by_patch:
-            synced.append(
-                (
-                    commit_hash,
-                    target_by_patch[patch_id],
-                    source_commits[commit_hash]["info"]["title"],
-                )
-            )
-            del target_by_patch[patch_id]
-        else:
-            missing.append((commit_hash, source_commits[commit_hash]["info"]["title"]))
-
-    for patch_id, commit_hash in target_by_patch.items():
-        new.append((commit_hash, target_commits[commit_hash]["info"]["title"]))
+    synced, missing, new = get_diff_commits(args.source_branch, args.target_branch)
 
     # Rudimentary squash detection (can be improved)
     # For now, we'll just list remaining commits as missing/new
 
-    print(f"Comparison between {source_branch} and {target_branch}")
+    print(f"Comparison between {args.source_branch} and {args.target_branch}")
     print("-" * 80)
     print("{:<12} {:<15} {:<15} {}".format("Status", "Source Commit", "Target Commit", "Message"))
     print("-" * 80)
@@ -316,6 +321,53 @@ def diff_content_main(args: argparse.Namespace) -> None:
         if origin_branch:
             msg = f"{msg} (from {origin_branch})"
         print(f"🆕 NEW         -                 {tgt[:7]}           {msg}")
+
+
+def auto_cherry_pick_main(args: argparse.Namespace) -> None:
+    source_branch = args.source_branch
+    target_branch = args.target_branch
+
+    _, missing, _ = get_diff_commits(source_branch, target_branch)
+
+    if not missing:
+        print("No commits to cherry-pick.")
+        return
+
+    commit_hashes = [m[0] for m in missing]
+
+    # Create a new branch
+    new_branch_name = f"cherry-pick-{source_branch}-to-{target_branch}"
+    try:
+        subprocess.check_call(["git", "checkout", target_branch])
+        subprocess.check_call(["git", "checkout", "-b", new_branch_name])
+    except subprocess.CalledProcessError:
+        raise SystemExit(f"Could not create a new branch from {target_branch}.")
+
+    # Cherry-pick the commits in reverse order
+    for commit_hash in reversed(commit_hashes):
+        try:
+            subprocess.check_call(["git", "cherry-pick", commit_hash])
+        except subprocess.CalledProcessError:
+            subprocess.check_call(["git", "cherry-pick", "--abort"])
+            subprocess.check_call(["git", "checkout", target_branch])
+            subprocess.check_call(["git", "branch", "-D", new_branch_name])
+            raise SystemExit(
+                f"Cherry-pick failed for commit {commit_hash}. Conflicts detected."
+            )
+
+    # Push the new branch
+    try:
+        subprocess.check_call(["git", "push", "origin", new_branch_name])
+    except subprocess.CalledProcessError:
+        raise SystemExit(f"Could not push the new branch {new_branch_name} to origin.")
+
+    # Create a merge request
+    args.source_branch = new_branch_name
+    if not args.title:
+        args.title = f"Cherry-pick {source_branch} to {target_branch}"
+    if not args.message:
+        args.message = f"Cherry-picking commits from {source_branch} to {target_branch}."
+    create_mr_main(args)
 
 
 def main() -> None:
@@ -378,6 +430,46 @@ def main() -> None:
     parser_diff.add_argument("source_branch", help="Source branch name.")
     parser_diff.add_argument("target_branch", help="Target branch name.")
     parser_diff.set_defaults(func=diff_content_main)
+
+    # auto-cherry-pick command
+    parser_auto_cherry_pick = subparsers.add_parser(
+        "auto-cherry-pick", help="Automate cherry-picking commits and creating a merge request."
+    )
+    parser_auto_cherry_pick.add_argument(
+        "-b",
+        "--base-url",
+        default=saved_base_url,
+        required=saved_base_url is None,
+        help=f"GitLab base URL. (saved: {saved_base_url})",
+    )
+    parser_auto_cherry_pick.add_argument(
+        "-p",
+        "--project-path",
+        help="GitLab project path (e.g. 'group/project'). If not provided, it will be auto-detected from the git remote URL.",
+    )
+    parser_auto_cherry_pick.add_argument(
+        "-s",
+        "--source-branch",
+        required=True,
+        help="Source branch name.",
+    )
+    parser_auto_cherry_pick.add_argument(
+        "-t",
+        "--target-branch",
+        required=True,
+        help="Target branch name.",
+    )
+    parser_auto_cherry_pick.add_argument("--title", help="Merge request title.")
+    parser_auto_cherry_pick.add_argument(
+        "-m", "--message", help="Merge request message (description)."
+    )
+    parser_auto_cherry_pick.add_argument("-a", "--assignee", help="Assignee username.")
+    parser_auto_cherry_pick.add_argument(
+        "-r",
+        "--reviewers",
+        help="Comma-separated reviewer usernames (e.g. alice,bob).",
+    )
+    parser_auto_cherry_pick.set_defaults(func=auto_cherry_pick_main)
 
     args = parser.parse_args()
     args.func(args)
