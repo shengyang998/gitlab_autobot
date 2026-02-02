@@ -5,13 +5,14 @@ Status: On track
 
 ## Current Status
 - Working branch: feature/acp-changes
-- Focus: Remote diff-content integration for GitLab compare API.
+- Focus: Squash-aware diff-content comparisons across branches.
 
 ## Decisions
 - Keep diff-content output based on patch-id comparisons without merge message parsing, since that logic is no longer used.
 - Synced commit display now uses "source->target" to reflect cherry-picked hashes.
 - diff-content now prefers the GitLab compare API when credentials are available and falls back to local git otherwise.
 - Patch-id matching uses GitLab commit diff results to keep synced/missing/new output consistent.
+- Squash detection uses diff-line containment (with file context) to mark commits as synced.
 
 ## Changes
 - Removed dead code in cli.py for unused merge source extraction.
@@ -19,3 +20,4 @@ Status: On track
 - Added GitLab client support for commit diff retrieval and compare with cached project id usage.
 - Updated diff-content CLI arguments for base URL and project path.
 - Updated README documentation for diff-content usage.
+- Added diff-line based matching to detect squashed commits for diff-content.
