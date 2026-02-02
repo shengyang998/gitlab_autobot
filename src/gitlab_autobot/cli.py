@@ -387,6 +387,45 @@ def get_merge_commits(source_branch: str, target_branch: str) -> set[str]:
     return set(output.split())
 
 
+def filter_merge_commits(
+    synced: list[tuple],
+    missing: list[tuple],
+    new: list[tuple],
+    source_branch: str,
+    target_branch: str,
+    include_merges: bool,
+) -> tuple[list[tuple], list[tuple], list[tuple], dict[str, int]]:
+    assert isinstance(synced, list)
+    assert isinstance(missing, list)
+    assert isinstance(new, list)
+    if include_merges:
+        return synced, missing, new, {"synced": 0, "missing": 0, "new": 0}
+
+    source_merges = get_merge_commits(source_branch, target_branch)
+    target_merges = get_merge_commits(target_branch, source_branch)
+
+    synced_filtered = [
+        entry
+        for entry in synced
+        if entry[0] not in source_merges and entry[1] not in target_merges
+    ]
+    missing_filtered = [
+        entry for entry in missing if entry[0] not in source_merges
+    ]
+    new_filtered = [entry for entry in new if entry[0] not in target_merges]
+
+    return (
+        synced_filtered,
+        missing_filtered,
+        new_filtered,
+        {
+            "synced": len(synced) - len(synced_filtered),
+            "missing": len(missing) - len(missing_filtered),
+            "new": len(new) - len(new_filtered),
+        },
+    )
+
+
 def create_mr_main(args: argparse.Namespace) -> None:
     creds = load_credentials()
     token = creds.get("token") or os.getenv("GITLAB_TOKEN")
@@ -499,8 +538,32 @@ def diff_content_main(args: argparse.Namespace) -> None:
         # Use local git to compare branches with patch-id detection
         synced, missing, new = get_diff_commits(source_branch, target_branch)
 
+    synced, missing, new, merge_counts = filter_merge_commits(
+        synced,
+        missing,
+        new,
+        source_branch=source_branch,
+        target_branch=target_branch,
+        include_merges=args.include_merges,
+    )
+
     print(f"Comparison between {source_branch} and {target_branch}")
     print("-" * 80)
+    if not args.include_merges:
+        skipped_merges = sum(merge_counts.values())
+        if skipped_merges:
+            details = []
+            if merge_counts["missing"]:
+                details.append(f"{merge_counts['missing']} missing")
+            if merge_counts["synced"]:
+                details.append(f"{merge_counts['synced']} synced")
+            if merge_counts["new"]:
+                details.append(f"{merge_counts['new']} new")
+            detail_text = ", ".join(details)
+            print(
+                "Note: Skipping merge commits "
+                f"({detail_text}). Use --include-merges to show them."
+            )
     print("{:<12} {:<12} {}".format("Status", "Commit", "Message"))
     print("-" * 80)
 
@@ -530,18 +593,15 @@ def auto_cherry_pick_main(args: argparse.Namespace) -> None:
     target_branch = args.target_branch
 
     _, missing, _ = get_diff_commits(source_branch, target_branch)
-
-    merge_commits = get_merge_commits(source_branch, target_branch)
-    missing_non_merge: list[tuple[str, str]] = []
-    skipped_merges: list[tuple[str, str]] = []
-    if merge_commits:
-        for commit_hash, title in missing:
-            if commit_hash in merge_commits:
-                skipped_merges.append((commit_hash, title))
-            else:
-                missing_non_merge.append((commit_hash, title))
-    else:
-        missing_non_merge = missing
+    _, missing_non_merge, _, merge_counts = filter_merge_commits(
+        [],
+        missing,
+        [],
+        source_branch=source_branch,
+        target_branch=target_branch,
+        include_merges=False,
+    )
+    skipped_merges = merge_counts["missing"]
 
     if not missing_non_merge:
         if skipped_merges:
@@ -555,7 +615,7 @@ def auto_cherry_pick_main(args: argparse.Namespace) -> None:
 
     if skipped_merges and not args.dry_run:
         print(
-            f"Note: Skipping {len(skipped_merges)} merge commit(s) because "
+            f"Note: Skipping {skipped_merges} merge commit(s) because "
             "auto-cherry-pick does not support cherry-picking merges."
         )
 
@@ -568,7 +628,7 @@ def auto_cherry_pick_main(args: argparse.Namespace) -> None:
             print(f"  - {commit_hash[:7]} {title}")
         if skipped_merges:
             print(
-                f"  (skipped {len(skipped_merges)} merge commit(s) "
+                f"  (skipped {skipped_merges} merge commit(s) "
                 "not supported by auto-cherry-pick)"
             )
 
@@ -681,7 +741,8 @@ def main() -> None:
         help="Compare two branches based on diff content.",
         description=(
             "Compares branches using GitLab's compare API when credentials are "
-            "available, with a local git fallback."
+            "available, with a local git fallback. Merge commits are hidden by "
+            "default; use --include-merges to show them."
         ),
     )
     parser_diff.add_argument(
@@ -709,6 +770,11 @@ def main() -> None:
         "--target-branch",
         required=True,
         help="Target branch name.",
+    )
+    parser_diff.add_argument(
+        "--include-merges",
+        action="store_true",
+        help="Include merge commits in the output (hidden by default).",
     )
     parser_diff.set_defaults(func=diff_content_main)
 
