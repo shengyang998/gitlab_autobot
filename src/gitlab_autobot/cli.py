@@ -296,46 +296,32 @@ def create_mr_main(args: argparse.Namespace) -> None:
 
 
 def diff_content_main(args: argparse.Namespace) -> None:
-    creds = load_credentials()
-    token = creds.get("token") or os.getenv("GITLAB_TOKEN")
-    if not token:
-        raise SystemExit("Missing token. Set GITLAB_TOKEN or save credentials.")
-
-    base_url = args.base_url
-    if not base_url:
-        raise SystemExit("Missing base URL. Provide --base-url or save credentials.")
-
-    client = GitLabClient(base_url=base_url, token=token)
-
-    try:
-        user_info = ensure_authenticated(client)
-    except AuthError:
-        raise SystemExit("Authentication failed. Provide a valid token.")
-
-    project_path = args.project_path
-    if not project_path:
-        project_path = get_project_path_from_git()
-        if not project_path:
-            raise SystemExit(
-                "Could not auto-detect project path from git remote 'origin'. "
-                "Please provide it using the --project-path argument."
-            )
-    
     source_branch = args.source_branch
     target_branch = args.target_branch
 
-    comparison = client.compare(project_path, target_branch, source_branch)
-    commits = comparison.get("commits", [])
+    # Use local git to compare branches with patch-id detection
+    synced, missing, new = get_diff_commits(source_branch, target_branch)
 
     print(f"Comparison between {source_branch} and {target_branch}")
     print("-" * 80)
-    print("{:<12} {:<15} {}".format("Status", "Commit", "Message"))
+    print("{:<12} {:<12} {}".format("Status", "Commit", "Message"))
     print("-" * 80)
 
-    for commit in commits:
-        short_id = commit['short_id']
-        title = commit['title']
-        print(f"???? UNKNOWN     {short_id}           {title}")
+    # Show synced commits (cherry-picked to target)
+    for source_hash, target_hash, title in synced:
+        print("{:<12} {:<12} {}".format("SYNCED", source_hash[:7], title))
+
+    # Show missing commits (need to be cherry-picked)
+    for commit_hash, title in missing:
+        print("{:<12} {:<12} {}".format("MISSING", commit_hash[:7], title))
+
+    # Show new commits (only in target, not in source)
+    for commit_hash, title in new:
+        print("{:<12} {:<12} {}".format("NEW", commit_hash[:7], title))
+
+    # Print summary
+    print("-" * 80)
+    print(f"Summary: {len(synced)} synced, {len(missing)} missing, {len(new)} new in target")
 
 
 def auto_cherry_pick_main(args: argparse.Namespace) -> None:
@@ -461,19 +447,9 @@ def main() -> None:
 
     # diff-content command
     parser_diff = subparsers.add_parser(
-        "diff-content", help="Compare two branches based on diff content."
-    )
-    parser_diff.add_argument(
-        "-b",
-        "--base-url",
-        default=saved_base_url,
-        required=saved_base_url is None,
-        help=f"GitLab base URL. (saved: {saved_base_url})",
-    )
-    parser_diff.add_argument(
-        "-p",
-        "--project-path",
-        help="GitLab project path (e.g. 'group/project'). If not provided, it will be auto-detected from the git remote URL.",
+        "diff-content",
+        help="Compare two branches based on diff content using local git.",
+        description="Compares branches using patch-id to detect cherry-picked commits.",
     )
     parser_diff.add_argument(
         "-s",
