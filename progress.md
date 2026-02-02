@@ -13,3 +13,4 @@
 - Branch-cherry-pick now skips merge commits in dry-run and execution output.
 - diff-content now hides merge commits by default with an include flag.
 - Renamed command to branch-cherry-pick.
+- Documented branch-cherry-pick usage in README.

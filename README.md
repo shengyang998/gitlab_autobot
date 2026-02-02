@@ -141,6 +141,30 @@ Optional arguments:
 *   `-p`, `--project-path`: GitLab project path (e.g., 'group/project'). Auto-detected from the git remote if omitted.
 *   `--include-merges`: Include merge commits in the output (hidden by default).
 
+## CLI usage (branch-cherry-pick)
+
+Run the CLI with the `branch-cherry-pick` subcommand:
+
+```bash
+gitlab-autobot branch-cherry-pick --source-branch <source_branch> --target-branch <target_branch>
+```
+
+This command cherry-picks commits from the source branch that are missing in the
+target branch, then creates a merge request for the new branch. Merge commits
+are skipped because cherry-picking merges is not supported.
+
+Optional arguments:
+
+*   `-b`, `--base-url`: GitLab base URL. If not provided, the saved URL is used.
+*   `-p`, `--project-path`: GitLab project path (e.g., 'group/project'). Auto-detected from the git remote if omitted.
+*   `-s`, `--source-branch`: Source branch name. **(Required)**
+*   `-t`, `--target-branch`: Target branch name. **(Required)**
+*   `--title`: Merge request title.
+*   `-m`, `--message`: Merge request description.
+*   `-a`, `--assignee`: Assignee username.
+*   `-r`, `--reviewers`: Comma-separated list of reviewer usernames.
+*   `--dry-run`: Show planned actions without creating a branch or merge request.
+
 ## MCP server usage (MR tooling)
 
 Start the MCP server:
