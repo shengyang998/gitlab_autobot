@@ -22,3 +22,4 @@
 - Fixed diff-content merge filtering to use compare parent IDs with local fallback.
 - Updated branch-cherry-pick temp branch naming with prefix, sanitization, and suffix.
 - Ensured branch-cherry-pick fast-forwards local branches from origin before diffs and checkout.
+- Skipped branch sync in branch-cherry-pick dry-run.

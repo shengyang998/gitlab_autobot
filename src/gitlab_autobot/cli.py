@@ -804,8 +804,9 @@ def auto_cherry_pick_main(args: argparse.Namespace) -> None:
     source_branch = args.source_branch
     target_branch = args.target_branch
 
-    ensure_local_branch_up_to_date(source_branch)
-    ensure_local_branch_up_to_date(target_branch)
+    if not args.dry_run:
+        ensure_local_branch_up_to_date(source_branch)
+        ensure_local_branch_up_to_date(target_branch)
 
     _, missing, _ = get_diff_commits(source_branch, target_branch)
     _, missing_non_merge, _, merge_counts = filter_merge_commits(

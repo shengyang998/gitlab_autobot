@@ -21,6 +21,7 @@ Status: On track
 - Use compare parent_ids to identify merge commits when diff-content uses GitLab API.
 - Validate branch refs before local diff/cherry-pick to avoid ambiguous rev errors.
 - Branch-cherry-pick now fast-forwards local branches from origin and errors on divergence.
+- Branch-cherry-pick dry-run skips branch sync to avoid touching local refs.
 
 ## Changes
 - Removed dead code in cli.py for unused merge source extraction.
@@ -37,3 +38,4 @@ Status: On track
 - Updated branch-cherry-pick temporary branch naming format and suffix.
 - Added branch ref resolution with fetch guidance for local comparisons.
 - Added local branch sync to origin before branch-cherry-pick diffs and checkout.
+- Skipped branch sync when branch-cherry-pick runs in dry-run.
