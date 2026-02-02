@@ -27,3 +27,4 @@ Status: On track
 - Branch-cherry-pick now filters merge commits from dry-run and execution lists.
 - diff-content filters merge commits by default and adds --include-merges.
 - Updated CLI messages and subcommand name to branch-cherry-pick.
+- Documented branch-cherry-pick CLI usage in README.
