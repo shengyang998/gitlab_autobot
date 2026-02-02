@@ -121,6 +121,81 @@ def ensure_branch_refs(
     return source_ref, target_ref
 
 
+def _git_fetch_branch(branch: str, remote: str = "origin") -> None:
+    assert branch
+    assert remote
+    try:
+        subprocess.check_call(["git", "fetch", remote, branch])
+    except subprocess.CalledProcessError:
+        raise SystemExit(f"Could not fetch {remote}/{branch}.")
+    except FileNotFoundError:
+        raise SystemExit("Git is not available in PATH.")
+
+
+def _git_ahead_behind(local_ref: str, remote_ref: str) -> tuple[int, int]:
+    try:
+        result = subprocess.run(
+            ["git", "rev-list", "--left-right", "--count", f"{local_ref}...{remote_ref}"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        raise SystemExit(f"Could not compare {local_ref} with {remote_ref}.")
+    output = result.stdout.strip()
+    parts = output.split()
+    assert len(parts) == 2
+    ahead, behind = int(parts[0]), int(parts[1])
+    return ahead, behind
+
+
+def ensure_local_branch_up_to_date(branch: str, remote: str = "origin") -> None:
+    assert branch
+    assert remote
+    normalized_branch = normalize_fetch_branch(branch, remote)
+    _git_fetch_branch(normalized_branch, remote=remote)
+    remote_ref = f"refs/remotes/{remote}/{normalized_branch}"
+    if not git_ref_exists(remote_ref):
+        raise SystemExit(f"Remote branch {remote}/{normalized_branch} not found.")
+
+    local_ref = f"refs/heads/{normalized_branch}"
+    if not git_ref_exists(local_ref):
+        try:
+            subprocess.check_call(
+                ["git", "branch", normalized_branch, f"{remote}/{normalized_branch}"]
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            raise SystemExit(f"Could not create local branch {normalized_branch}.")
+        return
+
+    ahead, behind = _git_ahead_behind(normalized_branch, f"{remote}/{normalized_branch}")
+    assert ahead >= 0
+    assert behind >= 0
+    if behind == 0:
+        return
+    if ahead > 0:
+        raise SystemExit(
+            f"Local branch {normalized_branch} has diverged from {remote}/"
+            f"{normalized_branch}. Please sync manually."
+        )
+
+    current_branch = get_current_branch()
+    if current_branch is None:
+        raise SystemExit("Could not determine current git branch.")
+    try:
+        if current_branch == normalized_branch:
+            subprocess.check_call(
+                ["git", "merge", "--ff-only", f"{remote}/{normalized_branch}"]
+            )
+        else:
+            subprocess.check_call(["git", "update-ref", local_ref, remote_ref])
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        raise SystemExit(
+            f"Could not fast-forward local branch {normalized_branch} to "
+            f"{remote}/{normalized_branch}."
+        )
+
+
 def get_commit_count(target_branch: str, source_branch: str) -> int:
     try:
         result = subprocess.run(
@@ -724,6 +799,10 @@ def diff_content_main(args: argparse.Namespace) -> None:
 def auto_cherry_pick_main(args: argparse.Namespace) -> None:
     source_branch = args.source_branch
     target_branch = args.target_branch
+
+    if not args.dry_run:
+        ensure_local_branch_up_to_date(source_branch)
+        ensure_local_branch_up_to_date(target_branch)
 
     _, missing, _ = get_diff_commits(source_branch, target_branch)
     _, missing_non_merge, _, merge_counts = filter_merge_commits(
