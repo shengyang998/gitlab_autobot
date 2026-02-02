@@ -133,10 +133,13 @@ The comparison is content-based: it matches commits by patch-id and also detects
 when a commit's changed lines are fully contained in a target commit (to treat
 squashed commits as synced).
 
+Merge commits are hidden by default; use `--include-merges` to show them.
+
 Optional arguments:
 
 *   `-b`, `--base-url`: GitLab base URL. If not provided, the saved URL is used.
 *   `-p`, `--project-path`: GitLab project path (e.g., 'group/project'). Auto-detected from the git remote if omitted.
+*   `--include-merges`: Include merge commits in the output (hidden by default).
 
 ## MCP server usage (MR tooling)
 
