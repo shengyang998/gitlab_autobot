@@ -4,8 +4,8 @@ Date: 2026-02-03
 Status: On track
 
 ## Current Status
-- Working branch: cursor/autobot-cherry-pick-arguments-0d74
-- Focus: Validate branch refs for branch-cherry-pick diffing.
+- Working branch: cursor/-bc-b2910a39-edab-4ea7-862c-6efb24263dc2-19f3
+- Focus: Keep branch-cherry-pick local branches synced with origin.
 
 ## Decisions
 - Keep diff-content output based on patch-id comparisons without merge message parsing, since that logic is no longer used.
@@ -20,6 +20,8 @@ Status: On track
 - Renamed CLI command to branch-cherry-pick for clarity.
 - Use compare parent_ids to identify merge commits when diff-content uses GitLab API.
 - Validate branch refs before local diff/cherry-pick to avoid ambiguous rev errors.
+- Branch-cherry-pick now fast-forwards local branches from origin and errors on divergence.
+- Branch-cherry-pick dry-run skips branch sync to avoid touching local refs.
 
 ## Changes
 - Removed dead code in cli.py for unused merge source extraction.
@@ -35,3 +37,5 @@ Status: On track
 - Filter diff-content merge commits using compare metadata with local fallback.
 - Updated branch-cherry-pick temporary branch naming format and suffix.
 - Added branch ref resolution with fetch guidance for local comparisons.
+- Added local branch sync to origin before branch-cherry-pick diffs and checkout.
+- Skipped branch sync when branch-cherry-pick runs in dry-run.
