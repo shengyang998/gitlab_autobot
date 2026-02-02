@@ -249,12 +249,39 @@ def classify_diff_commits(
     return synced, missing, new
 
 
+def extract_merge_commits_from_compare(
+    commits_raw: list[dict[str, Any]]
+) -> set[str] | None:
+    merges: set[str] = set()
+    saw_parent_ids = False
+    for commit in commits_raw:
+        parent_ids = commit.get("parent_ids")
+        if parent_ids is None:
+            continue
+        saw_parent_ids = True
+        assert isinstance(parent_ids, list)
+        if len(parent_ids) <= 1:
+            continue
+        commit_hash = commit.get("id") or commit.get("sha")
+        if commit_hash:
+            merges.add(commit_hash)
+    if not saw_parent_ids:
+        return None
+    return merges
+
+
 def get_remote_diff_commits(
     client: GitLabClient,
     project_path: str,
     source_branch: str,
     target_branch: str,
-) -> tuple[list[tuple], list[tuple], list[tuple]]:
+) -> tuple[
+    list[tuple],
+    list[tuple],
+    list[tuple],
+    set[str] | None,
+    set[str] | None,
+]:
     project_id = client.get_project_id(project_path)
     source_compare = client.compare(
         project_path=project_path,
@@ -272,6 +299,8 @@ def get_remote_diff_commits(
     target_commits_raw = target_compare.get("commits", [])
     assert isinstance(source_commits_raw, list)
     assert isinstance(target_commits_raw, list)
+    source_merge_commits = extract_merge_commits_from_compare(source_commits_raw)
+    target_merge_commits = extract_merge_commits_from_compare(target_commits_raw)
 
     diff_cache: dict[str, str] = {}
     patch_id_cache: dict[str, str | None] = {}
@@ -326,7 +355,8 @@ def get_remote_diff_commits(
 
     source_commits = build_commit_map(source_commits_raw)
     target_commits = build_commit_map(target_commits_raw)
-    return classify_diff_commits(source_commits, target_commits)
+    synced, missing, new = classify_diff_commits(source_commits, target_commits)
+    return synced, missing, new, source_merge_commits, target_merge_commits
 
 
 def get_diff(commit_hash: str) -> str:
@@ -394,15 +424,21 @@ def filter_merge_commits(
     source_branch: str,
     target_branch: str,
     include_merges: bool,
+    source_merges: set[str] | None = None,
+    target_merges: set[str] | None = None,
 ) -> tuple[list[tuple], list[tuple], list[tuple], dict[str, int]]:
     assert isinstance(synced, list)
     assert isinstance(missing, list)
     assert isinstance(new, list)
+    assert source_merges is None or isinstance(source_merges, set)
+    assert target_merges is None or isinstance(target_merges, set)
     if include_merges:
         return synced, missing, new, {"synced": 0, "missing": 0, "new": 0}
 
-    source_merges = get_merge_commits(source_branch, target_branch)
-    target_merges = get_merge_commits(target_branch, source_branch)
+    if source_merges is None:
+        source_merges = get_merge_commits(source_branch, target_branch)
+    if target_merges is None:
+        target_merges = get_merge_commits(target_branch, source_branch)
 
     synced_filtered = [
         entry
@@ -520,11 +556,13 @@ def diff_content_main(args: argparse.Namespace) -> None:
     token = creds.get("token") or os.getenv("GITLAB_TOKEN")
     base_url = args.base_url or creds.get("base_url")
     project_path = args.project_path or get_project_path_from_git()
+    source_merges = None
+    target_merges = None
 
     if token and base_url and project_path:
         client = GitLabClient(base_url=base_url, token=token)
         try:
-            synced, missing, new = get_remote_diff_commits(
+            synced, missing, new, source_merges, target_merges = get_remote_diff_commits(
                 client=client,
                 project_path=project_path,
                 source_branch=source_branch,
@@ -545,6 +583,8 @@ def diff_content_main(args: argparse.Namespace) -> None:
         source_branch=source_branch,
         target_branch=target_branch,
         include_merges=args.include_merges,
+        source_merges=source_merges,
+        target_merges=target_merges,
     )
 
     print(f"Comparison between {source_branch} and {target_branch}")
