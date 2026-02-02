@@ -82,7 +82,29 @@ class GitLabClient:
             "POST", f"/projects/{project_id}/merge_requests", json=payload
         ).json()
     
-    def compare(self, project_path: str, from_ref: str, to_ref: str) -> dict[str, Any]:
-        project_id = self.get_project_id(project_path)
+    def compare(
+        self,
+        project_path: str,
+        from_ref: str,
+        to_ref: str,
+        project_id: int | None = None,
+    ) -> dict[str, Any]:
+        resolved_project_id = project_id or self.get_project_id(project_path)
         params = {"from": from_ref, "to": to_ref}
-        return self.request("GET", f"/projects/{project_id}/repository/compare", params=params).json()
+        return self.request(
+            "GET",
+            f"/projects/{resolved_project_id}/repository/compare",
+            params=params,
+        ).json()
+
+    def get_commit_diff(
+        self,
+        project_path: str,
+        commit_sha: str,
+        project_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        resolved_project_id = project_id or self.get_project_id(project_path)
+        return self.request(
+            "GET",
+            f"/projects/{resolved_project_id}/repository/commits/{commit_sha}/diff",
+        ).json()
