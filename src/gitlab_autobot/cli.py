@@ -302,7 +302,11 @@ def diff_content_main(args: argparse.Namespace) -> None:
 
     # Show synced commits (cherry-picked to target)
     for source_hash, target_hash, title in synced:
-        print("{:<12} {:<12} {}".format("SYNCED", source_hash[:7], title))
+        print(
+            "{:<12} {:<12} {}".format(
+                "SYNCED", f"{source_hash[:7]}->{target_hash[:7]}", title
+            )
+        )
 
     # Show missing commits (need to be cherry-picked)
     for commit_hash, title in missing:
