@@ -14,3 +14,4 @@
 - diff-content now hides merge commits by default with an include flag.
 - Renamed command to branch-cherry-pick.
 - Documented branch-cherry-pick usage in README.
+- Fixed diff-content merge filtering to use compare parent IDs with local fallback.

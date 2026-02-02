@@ -4,8 +4,8 @@ Date: 2026-02-02
 Status: On track
 
 ## Current Status
-- Working branch: cursor/cherry-pick-name-update-1f14
-- Focus: Rename command to branch-cherry-pick.
+- Working branch: cursor/autobot-merge-commit-display-15f9
+- Focus: Fix diff-content merge filtering for compare API output.
 
 ## Decisions
 - Keep diff-content output based on patch-id comparisons without merge message parsing, since that logic is no longer used.
@@ -16,6 +16,7 @@ Status: On track
 - Branch-cherry-pick hides merge commits because the tool cannot cherry-pick merges without manual intervention.
 - diff-content hides merge commits by default with an include flag for audits.
 - Renamed CLI command to branch-cherry-pick for clarity.
+- Use compare parent_ids to identify merge commits when diff-content uses GitLab API.
 
 ## Changes
 - Removed dead code in cli.py for unused merge source extraction.
@@ -28,3 +29,4 @@ Status: On track
 - diff-content filters merge commits by default and adds --include-merges.
 - Updated CLI messages and subcommand name to branch-cherry-pick.
 - Documented branch-cherry-pick CLI usage in README.
+- Filter diff-content merge commits using compare metadata with local fallback.
