@@ -464,6 +464,18 @@ def main() -> None:
         "diff-content", help="Compare two branches based on diff content."
     )
     parser_diff.add_argument(
+        "-b",
+        "--base-url",
+        default=saved_base_url,
+        required=saved_base_url is None,
+        help=f"GitLab base URL. (saved: {saved_base_url})",
+    )
+    parser_diff.add_argument(
+        "-p",
+        "--project-path",
+        help="GitLab project path (e.g. 'group/project'). If not provided, it will be auto-detected from the git remote URL.",
+    )
+    parser_diff.add_argument(
         "-s",
         "--source-branch",
         required=True,
