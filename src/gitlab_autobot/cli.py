@@ -335,6 +335,27 @@ def auto_cherry_pick_main(args: argparse.Namespace) -> None:
 
     commit_hashes = [m[0] for m in missing]
 
+    if args.dry_run:
+        print("Dry run enabled. The following actions will be performed:")
+        print("\n1. Commits to be cherry-picked:")
+        for commit_hash, title in missing:
+            print(f"  - {commit_hash[:7]} {title}")
+
+        new_branch_name = f"cherry-pick-{source_branch}-to-{target_branch}"
+        print(f"\n2. A new branch will be created: {new_branch_name}")
+
+        print("\n3. The new branch will be pushed to origin.")
+
+        title = args.title or f"Cherry-pick {source_branch} to {target_branch}"
+        description = (
+            args.message
+            or f"Cherry-picking commits from {source_branch} to {target_branch}."
+        )
+        print("\n4. A merge request will be created with the following details:")
+        print(f"  - Title: {title}")
+        print(f"  - Description: {description}")
+        return
+
     # Create a new branch
     new_branch_name = f"cherry-pick-{source_branch}-to-{target_branch}"
     try:
@@ -468,6 +489,11 @@ def main() -> None:
         "-r",
         "--reviewers",
         help="Comma-separated reviewer usernames (e.g. alice,bob).",
+    )
+    parser_auto_cherry_pick.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Perform a dry run without creating branches or merge requests.",
     )
     parser_auto_cherry_pick.set_defaults(func=auto_cherry_pick_main)
 
