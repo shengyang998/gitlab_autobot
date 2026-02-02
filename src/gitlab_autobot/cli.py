@@ -113,12 +113,18 @@ def get_patch_id(commit_hash: str) -> str | None:
     try:
         p1 = subprocess.Popen(["git", "show", commit_hash], stdout=subprocess.PIPE)
         p2 = subprocess.Popen(
-            ["git", "patch-id"], stdin=p1.stdout, capture_output=True, text=True
+            ["git", "patch-id"],
+            stdin=p1.stdout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
         )
         p1.stdout.close()
-        result = p2.communicate()[0]
-        return result.strip().split(" ")[0]
-    except (subprocess.CalledProcessError, FileNotFoundError):
+        stdout, _ = p2.communicate()
+        if p2.returncode == 0 and stdout:
+            return stdout.strip().split(" ")[0]
+        return None
+    except (subprocess.CalledProcessError, FileNotFoundError, IndexError):
         return None
 
 
