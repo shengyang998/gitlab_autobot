@@ -72,13 +72,6 @@ def get_last_commit_info(commit_hash: str = "HEAD") -> dict[str, str] | None:
         return None
 
 
-def extract_source_branch_from_merge(message: str) -> str | None:
-    match = re.search(r"Merge branch '(.+?)'", message)
-    if match:
-        return match.group(1)
-    return None
-
-
 def ensure_authenticated(client: GitLabClient) -> dict[str, str]:
     try:
         user = client.get_current_user()
