@@ -375,6 +375,18 @@ def get_diff_commits(
     return classify_diff_commits(source_commits, target_commits)
 
 
+def get_merge_commits(source_branch: str, target_branch: str) -> set[str]:
+    source_commits_rev = f"{target_branch}..{source_branch}"
+    try:
+        output = subprocess.check_output(
+            ["git", "rev-list", "--merges", source_commits_rev],
+            text=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return set()
+    return set(output.split())
+
+
 def create_mr_main(args: argparse.Namespace) -> None:
     creds = load_credentials()
     token = creds.get("token") or os.getenv("GITLAB_TOKEN")
@@ -519,17 +531,46 @@ def auto_cherry_pick_main(args: argparse.Namespace) -> None:
 
     _, missing, _ = get_diff_commits(source_branch, target_branch)
 
-    if not missing:
-        print("No commits to cherry-pick.")
+    merge_commits = get_merge_commits(source_branch, target_branch)
+    missing_non_merge: list[tuple[str, str]] = []
+    skipped_merges: list[tuple[str, str]] = []
+    if merge_commits:
+        for commit_hash, title in missing:
+            if commit_hash in merge_commits:
+                skipped_merges.append((commit_hash, title))
+            else:
+                missing_non_merge.append((commit_hash, title))
+    else:
+        missing_non_merge = missing
+
+    if not missing_non_merge:
+        if skipped_merges:
+            print(
+                "No non-merge commits to cherry-pick. "
+                "Auto-cherry-pick skips merge commits."
+            )
+        else:
+            print("No commits to cherry-pick.")
         return
 
-    commit_hashes = [m[0] for m in missing]
+    if skipped_merges and not args.dry_run:
+        print(
+            f"Note: Skipping {len(skipped_merges)} merge commit(s) because "
+            "auto-cherry-pick does not support cherry-picking merges."
+        )
+
+    commit_hashes = [m[0] for m in missing_non_merge]
 
     if args.dry_run:
         print("Dry run enabled. The following actions will be performed:")
         print("\n1. Commits to be cherry-picked:")
-        for commit_hash, title in missing:
+        for commit_hash, title in missing_non_merge:
             print(f"  - {commit_hash[:7]} {title}")
+        if skipped_merges:
+            print(
+                f"  (skipped {len(skipped_merges)} merge commit(s) "
+                "not supported by auto-cherry-pick)"
+            )
 
         new_branch_name = f"cherry-pick-{source_branch}-to-{target_branch}"
         print(f"\n2. A new branch will be created: {new_branch_name}")

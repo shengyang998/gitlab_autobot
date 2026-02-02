@@ -10,3 +10,4 @@
 - Documented diff-content CLI options and behavior in README.
 - Added squash-aware diff-content matching using diff-line containment.
 - Updated diff-content documentation to describe squash-aware comparisons.
+- Auto-cherry-pick now skips merge commits in dry-run and execution output.
