@@ -1,11 +1,11 @@
 # Project Status
 
-Date: 2026-02-02
+Date: 2026-02-03
 Status: On track
 
 ## Current Status
-- Working branch: cursor/cherry-pick-4803
-- Focus: Update branch-cherry-pick temporary branch naming.
+- Working branch: cursor/autobot-cherry-pick-arguments-0d74
+- Focus: Validate branch refs for branch-cherry-pick diffing.
 
 ## Decisions
 - Keep diff-content output based on patch-id comparisons without merge message parsing, since that logic is no longer used.
@@ -19,6 +19,7 @@ Status: On track
 - diff-content hides merge commits by default with an include flag for audits.
 - Renamed CLI command to branch-cherry-pick for clarity.
 - Use compare parent_ids to identify merge commits when diff-content uses GitLab API.
+- Validate branch refs before local diff/cherry-pick to avoid ambiguous rev errors.
 
 ## Changes
 - Removed dead code in cli.py for unused merge source extraction.
@@ -33,3 +34,4 @@ Status: On track
 - Documented branch-cherry-pick CLI usage in README.
 - Filter diff-content merge commits using compare metadata with local fallback.
 - Updated branch-cherry-pick temporary branch naming format and suffix.
+- Added branch ref resolution with fetch guidance for local comparisons.

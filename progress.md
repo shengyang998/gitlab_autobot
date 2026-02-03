@@ -1,5 +1,10 @@
 # Progress
 
+## 2026-02-03
+- Added branch ref validation for local diff/cherry-pick.
+- Improved error messaging with fetch hints for missing branches.
+- Ensured merge commit lookup uses resolved branch refs.
+
 ## 2026-02-02
 - Removed unused extract_source_branch_from_merge from cli.py.
 - Added project status tracking files.
