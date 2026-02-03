@@ -45,6 +45,82 @@ def get_current_branch() -> str | None:
         return None
 
 
+def git_ref_exists(ref: str) -> bool:
+    assert ref
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0
+
+
+def has_git_remote(remote: str) -> bool:
+    assert remote
+    result = subprocess.run(
+        ["git", "remote", "get-url", remote],
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0
+
+
+def normalize_fetch_branch(branch: str, remote: str) -> str:
+    assert branch
+    assert remote
+    remote_prefix = f"{remote}/"
+    if branch.startswith(remote_prefix):
+        return branch[len(remote_prefix) :]
+    if branch.startswith("refs/heads/"):
+        return branch[len("refs/heads/") :]
+    remote_ref_prefix = f"refs/remotes/{remote}/"
+    if branch.startswith(remote_ref_prefix):
+        return branch[len(remote_ref_prefix) :]
+    return branch
+
+
+def resolve_branch_ref(branch: str, remote: str = "origin") -> str | None:
+    assert branch
+    assert remote
+    if git_ref_exists(branch):
+        return branch
+    remote_ref = f"{remote}/{branch}"
+    if git_ref_exists(remote_ref):
+        return remote_ref
+    return None
+
+
+def ensure_branch_refs(
+    source_branch: str, target_branch: str, remote: str = "origin"
+) -> tuple[str, str]:
+    assert source_branch
+    assert target_branch
+    assert remote
+    source_ref = resolve_branch_ref(source_branch, remote=remote)
+    target_ref = resolve_branch_ref(target_branch, remote=remote)
+    missing: list[str] = []
+    if not source_ref:
+        missing.append(source_branch)
+    if not target_ref:
+        missing.append(target_branch)
+    if missing:
+        missing_text = ", ".join(missing)
+        fetch_hint = ""
+        if has_git_remote(remote):
+            fetch_branches = [normalize_fetch_branch(branch, remote) for branch in missing]
+            fetch_cmd = f"git fetch {remote} " + " ".join(fetch_branches)
+            fetch_hint = f" Run `{fetch_cmd}` and try again."
+        else:
+            fetch_hint = " Add a git remote or create the branch locally."
+        raise SystemExit(
+            "Branch not found locally: "
+            f"{missing_text}.{fetch_hint}"
+        )
+    assert source_ref
+    assert target_ref
+    return source_ref, target_ref
+
+
 def get_commit_count(target_branch: str, source_branch: str) -> int:
     try:
         result = subprocess.run(
@@ -387,8 +463,9 @@ def get_diff(commit_hash: str) -> str:
 def get_diff_commits(
     source_branch: str, target_branch: str
 ) -> tuple[list[tuple], list[tuple], list[tuple]]:
-    source_commits_rev = f"{target_branch}..{source_branch}"
-    target_commits_rev = f"{source_branch}..{target_branch}"
+    source_ref, target_ref = ensure_branch_refs(source_branch, target_branch)
+    source_commits_rev = f"{target_ref}..{source_ref}"
+    target_commits_rev = f"{source_ref}..{target_ref}"
 
     source_hashes = set(
         subprocess.check_output(["git", "rev-list", source_commits_rev])
@@ -421,7 +498,8 @@ def get_diff_commits(
 
 
 def get_merge_commits(source_branch: str, target_branch: str) -> set[str]:
-    source_commits_rev = f"{target_branch}..{source_branch}"
+    source_ref, target_ref = ensure_branch_refs(source_branch, target_branch)
+    source_commits_rev = f"{target_ref}..{source_ref}"
     try:
         output = subprocess.check_output(
             ["git", "rev-list", "--merges", source_commits_rev],
