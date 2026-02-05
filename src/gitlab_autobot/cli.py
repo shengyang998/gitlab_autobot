@@ -11,7 +11,7 @@ import textwrap
 from typing import Any, Iterable
 from collections import defaultdict
 
-from gitlab_autobot.config import load_credentials, save_credentials
+from gitlab_autobot.config import get_credentials, load_credentials, save_credentials
 from gitlab_autobot.gitlab import AuthError, GitLabClient, GitLabError
 
 
@@ -631,14 +631,25 @@ def filter_merge_commits(
 
 
 def create_mr_main(args: argparse.Namespace) -> None:
-    creds = load_credentials()
-    token = creds.get("token") or os.getenv("GITLAB_TOKEN")
+    base_url, token = get_credentials()
+    
+    # Override base_url from CLI argument if provided
+    if args.base_url:
+        base_url = args.base_url
+    
     if not token:
-        raise SystemExit("Missing token. Set GITLAB_TOKEN or save credentials.")
+        raise SystemExit(
+            "Missing GitLab token.\n"
+            "Please set GITLAB_TOKEN environment variable or run "
+            "'gitlab-autobot create-mr --base-url <URL>' to save credentials."
+        )
 
-    base_url = args.base_url
     if not base_url:
-        raise SystemExit("Missing base URL. Provide --base-url or save credentials.")
+        raise SystemExit(
+            "Missing GitLab base URL.\n"
+            "Please set GITLAB_BASE_URL environment variable or run "
+            "'gitlab-autobot create-mr --base-url <URL>' to save credentials."
+        )
 
     client = GitLabClient(base_url=base_url, token=token)
 
@@ -720,9 +731,11 @@ def diff_content_main(args: argparse.Namespace) -> None:
     source_branch = args.source_branch
     target_branch = args.target_branch
 
-    creds = load_credentials()
-    token = creds.get("token") or os.getenv("GITLAB_TOKEN")
-    base_url = args.base_url or creds.get("base_url")
+    base_url, token = get_credentials()
+    
+    # Override from CLI arguments if provided
+    if args.base_url:
+        base_url = args.base_url
     project_path = args.project_path or get_project_path_from_git()
     source_merges = None
     target_merges = None

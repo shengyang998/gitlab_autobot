@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gitlab-autobot"
-version = "0.1.0"
-description = "CLI and MCP server to create GitLab merge requests."
+version = "0.2.0"
+description = "CLI tool to create GitLab merge requests."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -14,12 +14,10 @@ authors = [
 ]
 dependencies = [
   "requests>=2.31",
-  "mcp>=1.0.0",
 ]
 
 [project.scripts]
 gitlab-autobot = "gitlab_autobot.cli:main"
-gitlab-autobot-mcp = "gitlab_autobot.mcp_server:main"
 
 [tool.setuptools.package-data]
 "gitlab_autobot" = ["py.typed"]
